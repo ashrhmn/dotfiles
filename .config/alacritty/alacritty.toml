@@ -1,0 +1,102 @@
+log_level = "Warn"
+save_to_clipboard = true
+use_thin_strokes = true
+
+[colors]
+draw_bold_text_with_bright_colors = true
+
+[[colors.indexed_colors]]
+color = "0xff966c"
+index = 16
+
+[[colors.indexed_colors]]
+color = "0xc53b53"
+index = 17
+
+[colors.bright]
+black = "0x444a73"
+blue = "0x82aaff"
+cyan = "0x86e1fc"
+green = "0xc3e88d"
+magenta = "0xc099ff"
+red = "0xff757f"
+white = "0xc8d3f5"
+yellow = "0xffc777"
+
+[colors.normal]
+black = "0x1b1d2b"
+blue = "0x82aaff"
+cyan = "0x86e1fc"
+green = "0xc3e88d"
+magenta = "0xc099ff"
+red = "0xff757f"
+white = "0x828bb8"
+yellow = "0xffc777"
+
+[colors.primary]
+background = "0x222436"
+foreground = "0xc8d3f5"
+
+[cursor.style]
+blinking = "Always"
+shape = "Beam"
+
+[env]
+TERM = "xterm-256color"
+
+[font]
+size = 15
+
+[font.bold]
+family = "MesloLGS NF"
+style = "Bold"
+
+[font.italic]
+family = "MesloLGS NF"
+style = "Italic"
+
+[font.normal]
+family = "MesloLGS NF"
+style = "Regular"
+
+[[keyboard.bindings]]
+chars = "\u001Bh"
+key = "H"
+mods = "Alt"
+
+[[keyboard.bindings]]
+chars = "\u001Bj"
+key = "J"
+mods = "Alt"
+
+[[keyboard.bindings]]
+chars = "\u001Bk"
+key = "K"
+mods = "Alt"
+
+[[keyboard.bindings]]
+chars = "\u001Bl"
+key = "L"
+mods = "Alt"
+
+[shell]
+args = ["-l", "-c", "tmux attach || tmux"]
+program = "/bin/zsh"
+
+[window]
+decorations = "buttonless"
+dynamic_padding = false
+dynamic_title = true
+opacity = 0.8
+startup_mode = "Windowed"
+
+[window.dimensions]
+columns = 100
+lines = 25
+
+[window.padding]
+x = 1
+y = 1
+
+[window.scrolling]
+history = 100000

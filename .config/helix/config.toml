@@ -1,0 +1,42 @@
+theme = "catppuccin_mocha"
+
+# theme = "catppuccin_macchiato"
+
+[editor]
+mouse = true
+auto-format = true
+# auto-save = true
+line-number = "relative"
+cursorline = true
+color-modes = true
+lsp.display-inlay-hints = false
+bufferline="multiple"
+
+[editor.cursor-shape]
+insert = "bar"
+normal = "block"
+select = "underline"
+
+[editor.file-picker]
+hidden = false
+
+[editor.statusline]
+left = ["mode", "spinner","version-control"]
+center = ["diagnostics","file-name"]
+right = ["read-only-indicator","position","workspace-diagnostics"]
+separator = "│"
+mode.normal = "NORMAL"
+mode.insert = "INSERT"
+mode.select = "SELECT"
+
+[editor.indent-guides]
+render = false
+
+[keys.normal]
+C-s = ":w" # Maps Ctrl-s to the typable command :w which is an alias for :write (save file)
+
+# [keys.normal]
+# [keys.normal."+"]
+# m = ":run-shell-command make"
+# c = ":run-shell-command cargo build"
+# t = ":run-shell-command cargo check"
