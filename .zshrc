@@ -136,17 +136,17 @@ alias dcp="denv | pbcopy"
 alias mp="multipass"
 
 
-export PATH="/Users/ash/Library/Python/3.8/bin/:$PATH"
+export PATH="$HOME/Library/Python/3.8/bin/:$PATH"
 export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
 export PGHOST="localhost"
 
-[ -s "/Users/ash/.web3j/source.sh" ] && source "/Users/ash/.web3j/source.sh"
+[ -s "$HOME/.web3j/source.sh" ] && source "$HOME/.web3j/source.sh"
 
 # bun completions
-[ -s "/Users/ash/.bun/_bun" ] && source "/Users/ash/.bun/_bun"
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
 
 # Bun
-export BUN_INSTALL="/Users/ash/.bun"
+export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
 export PATH="$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
@@ -179,7 +179,7 @@ add-zsh-hook chpwd load-nvmrc
 load-nvmrc
 
 # pnpm
-export PNPM_HOME="/Users/ash/Library/pnpm"
+export PNPM_HOME="$HOME/Library/pnpm"
 export PATH="$PNPM_HOME:$PATH"
 # pnpm end
 
@@ -191,8 +191,8 @@ export DOTNET_WATCH_RESTART_ON_RUDE_EDIT=1
 # export DOCKER_HOST=ssh://ubuntu@homeserver
 export PGDATA="/opt/homebrew/var/postgresql@15"
 export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
-export PATH="/Users/ash/flutter-sdk/flutter:$PATH"
-export PATH="/Users/ash/flutter-sdk/flutter/bin:$PATH"
+export PATH="$HOME/flutter-sdk/flutter:$PATH"
+export PATH="$HOME/flutter-sdk/flutter/bin:$PATH"
 export PATH="$PATH":"$HOME/.pub-cache/bin"
 export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
 
