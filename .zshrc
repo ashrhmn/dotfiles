@@ -135,6 +135,8 @@ alias dset="doppler secrets set"
 alias denv="doppler secrets download --no-file --format=env-no-quotes"
 alias dcp="denv | pbcopy"
 alias mp="multipass"
+alias c="clear"
+alias e="exit"
 
 
 export PATH="$HOME/Library/Python/3.8/bin/:$PATH"
@@ -188,7 +190,7 @@ export PATH="$PNPM_HOME:$PATH"
 # uninstall by removing these lines
 [[ -f ~/.config/tabtab/zsh/__tabtab.zsh ]] && . ~/.config/tabtab/zsh/__tabtab.zsh || true
 export DOTNET_WATCH_RESTART_ON_RUDE_EDIT=1
-# export DOCKER_HOST=ssh://ash@ashdesk
+export DOCKER_HOST=ssh://ash@debian
 # export DOCKER_HOST=ssh://ubuntu@homeserver
 export PGDATA="/opt/homebrew/var/postgresql@15"
 export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
@@ -198,3 +200,6 @@ export PATH="$PATH":"$HOME/.pub-cache/bin"
 export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
 
 eval "$(zoxide init --cmd cd zsh)"
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
