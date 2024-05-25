@@ -36,4 +36,4 @@ yabai -m rule --add app="^IINA$" manage=off
 
 
 # sketchybar offset
-yabai -m config external_bar all:32:0
+# yabai -m config external_bar all:32:0
