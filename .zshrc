@@ -198,7 +198,8 @@ export PATH="$HOME/flutter-sdk/flutter:$PATH"
 export PATH="$HOME/flutter-sdk/flutter/bin:$PATH"
 export PATH="$PATH":"$HOME/.pub-cache/bin"
 export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
-export LANG="en_US@UTF-8"
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
 
 eval "$(zoxide init --cmd cd zsh)"
 export PYENV_ROOT="$HOME/.pyenv"
