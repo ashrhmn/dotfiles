@@ -87,10 +87,10 @@ args = ["-l", "-c", "tmux attach || tmux"]
 program = "/bin/zsh"
 
 [window]
-decorations = "buttonless"
+decorations = "full"
 dynamic_padding = false
 dynamic_title = true
-opacity = 0.8
+opacity = 0.9
 startup_mode = "Windowed"
 
 [window.dimensions]
