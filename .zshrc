@@ -142,6 +142,7 @@ alias e="exit"
 export PATH="$HOME/Library/Python/3.8/bin/:$PATH"
 export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
 export PGHOST="localhost"
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
 [ -s "$HOME/.web3j/source.sh" ] && source "$HOME/.web3j/source.sh"
 
