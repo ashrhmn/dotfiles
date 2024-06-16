@@ -16,6 +16,7 @@ return {
 		dependencies = {
 			"williamboman/mason.nvim",
 			"nvimtools/none-ls.nvim",
+			"nvimtools/none-ls-extras.nvim",
 		},
 		config = function()
 			local null_ls = require("null-ls")
@@ -23,7 +24,10 @@ return {
 				sources = {
 					null_ls.builtins.formatting.stylua,
 					null_ls.builtins.formatting.prettier,
-					null_ls.builtins.diagnostics.eslint_d,
+					require("none-ls.formatting.jq"),
+					require("none-ls.code_actions.eslint"),
+					require("none-ls.diagnostics.eslint"),
+					--require("none-ls.formatting.eslint"),
 				},
 			})
 
