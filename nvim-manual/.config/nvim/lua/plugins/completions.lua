@@ -13,19 +13,23 @@ return {
 		"hrsh7th/nvim-cmp",
 		dependencies = {
 			"hrsh7th/cmp-path",
+			"hrsh7th/cmp-buffer",
 			"zbirenbaum/copilot.lua",
 			"zbirenbaum/copilot-cmp",
-      "hrsh7th/cmp-nvim-lua",
-      "David-Kunz/cmp-npm"
+			"hrsh7th/cmp-nvim-lua",
+			"David-Kunz/cmp-npm",
+			"onsails/lspkind.nvim",
 		},
 		config = function()
 			local cmp = require("cmp")
 			local luasnip = require("luasnip")
+			local lspkind = require("lspkind")
+
 			require("copilot").setup({
 				suggestion = {
 					enabled = true,
 					max_length = 1000,
-          debounce = 100,
+					debounce = 100,
 				},
 			})
 			require("copilot_cmp").setup()
@@ -51,6 +55,8 @@ return {
 				--				}),
 				mapping = {
 
+					["<C-e>"] = cmp.mapping.abort(),
+					["<C-Space>"] = cmp.mapping.complete(),
 					-- ... Your other mappings ...
 					["<CR>"] = cmp.mapping(function(fallback)
 						if cmp.visible() then
@@ -58,7 +64,7 @@ return {
 								luasnip.expand()
 							else
 								cmp.confirm({
-									select = true,
+									select = false,
 								})
 							end
 						else
@@ -91,6 +97,7 @@ return {
 				sources = cmp.config.sources({
 					{ name = "nvim_lsp" },
 					{ name = "copilot" },
+					{ name = "buffer" },
 					{ name = "luasnip" },
 					{ name = "path" },
 					{ name = "nvim_lua" },
@@ -98,6 +105,13 @@ return {
 				}, {
 					{ name = "buffer" },
 				}),
+
+				formatting = {
+					format = lspkind.cmp_format({
+						maxwidth = 50,
+						ellipsis_char = "...",
+					}),
+				},
 			})
 		end,
 	},

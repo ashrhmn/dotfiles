@@ -1,5 +1,3 @@
-local lspList = { "lua_ls", "tsserver" }
-
 return {
 	{
 		"williamboman/mason.nvim",
@@ -11,7 +9,7 @@ return {
 		"williamboman/mason-lspconfig.nvim",
 		config = function()
 			require("mason-lspconfig").setup({
-				ensure_installed = lspList,
+				ensure_installed = { "lua_ls", "vtsls" },
 			})
 		end,
 	},
@@ -24,11 +22,13 @@ return {
 			local lspconfig = require("lspconfig")
 			local capabilities = require("cmp_nvim_lsp").default_capabilities()
 
-			for _, lsp in ipairs(lspList) do
-				lspconfig[lsp].setup({
-					capabilities = capabilities,
-				})
-			end
+			lspconfig.lua_ls.setup({
+				capabilities = capabilities,
+			})
+
+			lspconfig.vtsls.setup({
+				capabilities = capabilities,
+			})
 
 			vim.keymap.set("n", "K", vim.lsp.buf.hover, { desc = "Hover Insights" })
 			vim.keymap.set("n", "gd", vim.lsp.buf.definition, { desc = "Go to Definition" })
