@@ -46,6 +46,15 @@ return {
 					completion = cmp.config.window.bordered(),
 					documentation = cmp.config.window.bordered(),
 				},
+				mapping = cmp.mapping.preset.insert({
+					["<C-k>"] = cmp.mapping.select_prev_item(), -- previous suggestion
+					["<C-j>"] = cmp.mapping.select_next_item(), -- next suggestion
+					["<C-b>"] = cmp.mapping.scroll_docs(-4),
+					["<C-f>"] = cmp.mapping.scroll_docs(4),
+					["<C-Space>"] = cmp.mapping.complete(), -- show completion suggestions
+					["<C-e>"] = cmp.mapping.abort(), -- close completion window
+					["<CR>"] = cmp.mapping.confirm({ select = false }),
+				}),
 				--				mapping = cmp.mapping.preset.insert({
 				--					["<C-b>"] = cmp.mapping.scroll_docs(-4),
 				--					["<C-f>"] = cmp.mapping.scroll_docs(4),
@@ -53,47 +62,47 @@ return {
 				--					["<C-e>"] = cmp.mapping.abort(),
 				--					["<CR>"] = cmp.mapping.confirm({ select = true }), -- Accept currently selected item. Set `select` to `false` to only confirm explicitly selected items.
 				--				}),
-				mapping = {
-
-					["<C-e>"] = cmp.mapping.abort(),
-					["<C-Space>"] = cmp.mapping.complete(),
-					-- ... Your other mappings ...
-					["<CR>"] = cmp.mapping(function(fallback)
-						if cmp.visible() then
-							if luasnip.expandable() then
-								luasnip.expand()
-							else
-								cmp.confirm({
-									select = false,
-								})
-							end
-						else
-							fallback()
-						end
-					end),
-
-					["<Tab>"] = cmp.mapping(function(fallback)
-						if cmp.visible() then
-							cmp.select_next_item()
-						elseif luasnip.locally_jumpable(1) then
-							luasnip.jump(1)
-						else
-							fallback()
-						end
-					end, { "i", "s" }),
-
-					["<S-Tab>"] = cmp.mapping(function(fallback)
-						if cmp.visible() then
-							cmp.select_prev_item()
-						elseif luasnip.locally_jumpable(-1) then
-							luasnip.jump(-1)
-						else
-							fallback()
-						end
-					end, { "i", "s" }),
-
-					-- ... Your other mappings ...
-				},
+				-- mapping = {
+				--
+				-- 	["<C-e>"] = cmp.mapping.abort(),
+				-- 	["<C-Space>"] = cmp.mapping.complete(),
+				-- 	-- ... Your other mappings ...
+				-- 	["<CR>"] = cmp.mapping(function(fallback)
+				-- 		if cmp.visible() then
+				-- 			if luasnip.expandable() then
+				-- 				luasnip.expand()
+				-- 			else
+				-- 				cmp.confirm({
+				-- 					select = false,
+				-- 				})
+				-- 			end
+				-- 		else
+				-- 			fallback()
+				-- 		end
+				-- 	end),
+				--
+				-- 	["<Tab>"] = cmp.mapping(function(fallback)
+				-- 		if cmp.visible() then
+				-- 			cmp.select_next_item()
+				-- 		elseif luasnip.locally_jumpable(1) then
+				-- 			luasnip.jump(1)
+				-- 		else
+				-- 			fallback()
+				-- 		end
+				-- 	end, { "i", "s" }),
+				--
+				-- 	["<S-Tab>"] = cmp.mapping(function(fallback)
+				-- 		if cmp.visible() then
+				-- 			cmp.select_prev_item()
+				-- 		elseif luasnip.locally_jumpable(-1) then
+				-- 			luasnip.jump(-1)
+				-- 		else
+				-- 			fallback()
+				-- 		end
+				-- 	end, { "i", "s" }),
+				--
+				-- 	-- ... Your other mappings ...
+				-- },
 				sources = cmp.config.sources({
 					{ name = "nvim_lsp" },
 					{ name = "copilot" },
