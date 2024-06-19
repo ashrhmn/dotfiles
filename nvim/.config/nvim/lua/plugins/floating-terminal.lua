@@ -33,8 +33,8 @@ return {
       ---The value for each field should be between `0` and `1`
       ---@type table<string,number>
       dimensions = {
-        height = 0.8, -- Height of the terminal window
-        width = 0.8, -- Width of the terminal window
+        height = 0.9, -- Height of the terminal window
+        width = 0.9, -- Width of the terminal window
         x = 0.5, -- X axis of the terminal window
         y = 0.5, -- Y axis of the terminal window
       },
@@ -105,5 +105,55 @@ return {
     vim.api.nvim_create_user_command("Gbrowse", function()
       ghBrowse:toggle()
     end, { bang = true })
+
+    local pm2Logs = fterm:new({
+      ft = "fterm_pm2Logs",
+      cmd = "pm2 logs",
+      dimensions = {
+        height = 0.9,
+        width = 0.9,
+      },
+    })
+
+    local togglePm2Logs = function()
+      pm2Logs:toggle()
+    end
+
+    vim.api.nvim_create_user_command("PmLogs", togglePm2Logs, { bang = true })
+
+    vim.keymap.set("n", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
+
+    local pmStartTerm = fterm:new({
+      ft = "fterm_pmStart",
+      cmd = "pm2 start ecosystem.config.js",
+      dimensions = {
+        height = 0.9,
+        width = 0.9,
+      },
+    })
+
+    local pmStart = function()
+      pmStartTerm:toggle()
+    end
+
+    vim.api.nvim_create_user_command("PmStart", pmStart, { bang = true })
+
+    local pmStopTerm = fterm:new({
+      ft = "fterm_pmStop",
+      cmd = "pm2 delete ecosystem.config.js",
+      dimensions = {
+        height = 0.9,
+        width = 0.9,
+      },
+    })
+
+    local pmStop = function()
+      pmStopTerm:toggle()
+    end
+
+    vim.api.nvim_create_user_command("PmStop", pmStop, { bang = true })
+
+    vim.keymap.set("n", "<leader>ps", pmStart, { noremap = true, silent = true, desc = "PM Start" })
+    vim.keymap.set("n", "<leader>pk", pmStop, { noremap = true, silent = true, desc = "PM Stop" })
   end,
 }
