@@ -71,6 +71,7 @@ return {
     vim.api.nvim_create_user_command("FTermToggle", fterm.toggle, { bang = true })
 
     vim.keymap.set("n", "<leader>tt", fterm.toggle, { noremap = true, silent = true })
+    vim.keymap.set("t", "<leader>tt", fterm.toggle, { noremap = true, silent = true })
 
     vim.api.nvim_create_user_command("PBuild", function()
       fterm.scratch({ cmd = { "pnpm", "build" } })
@@ -122,6 +123,7 @@ return {
     vim.api.nvim_create_user_command("PmLogs", togglePm2Logs, { bang = true })
 
     vim.keymap.set("n", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
+    vim.keymap.set("t", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
 
     local pmStartTerm = fterm:new({
       ft = "fterm_pmStart",
@@ -153,7 +155,23 @@ return {
 
     vim.api.nvim_create_user_command("PmStop", pmStop, { bang = true })
 
+    local pmRestartTerm = fterm:new({
+      ft = "fterm_pmRestart",
+      cmd = "pm2 restart ecosystem.config.js",
+      dimensions = {
+        height = 0.9,
+        width = 0.9,
+      },
+    })
+
+    local pmRestart = function()
+      pmRestartTerm:toggle()
+    end
+
+    vim.api.nvim_create_user_command("PmRestart", pmRestart, { bang = true })
+
     vim.keymap.set("n", "<leader>ps", pmStart, { noremap = true, silent = true, desc = "PM Start" })
     vim.keymap.set("n", "<leader>pk", pmStop, { noremap = true, silent = true, desc = "PM Stop" })
+    vim.keymap.set("n", "<leader>pr", pmRestart, { noremap = true, silent = true, desc = "PM Stop" })
   end,
 }

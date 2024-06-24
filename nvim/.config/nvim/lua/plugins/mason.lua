@@ -39,6 +39,8 @@ return {
         "pyright",
         "jsonls",
         "yamlls",
+        "solidity_ls_nomicfoundation",
+        "gopls",
       },
     })
 

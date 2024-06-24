@@ -137,7 +137,11 @@ alias dcp="denv | pbcopy"
 alias mp="multipass"
 alias c="clear"
 alias e="exit"
+# alias pmgen="f(){echo \"module.exports = { apps: [{ name: '$1', script: '$2' }] };\">ecosystem.config.js};f"
 
+function pmgen(){
+  echo "module.exports = { apps: [{ name: '$1', script: '${@:2}' }] };">ecosystem.config.js;
+}
 
 export PATH="$HOME/Library/Python/3.8/bin/:$PATH"
 export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
