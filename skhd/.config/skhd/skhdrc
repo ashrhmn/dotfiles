@@ -71,6 +71,13 @@ ctrl + shift + alt - n : yabai -m space --create && \
                    yabai -m window --space "${index}" && \
                    yabai -m space --focus "${index}"
 
+# cycle through windows ins same space
+alt - tab : yabai -m query --spaces  | jq -re ".[] | select(.[\"is-visible\"] == true).index"  | xargs -I{} yabai -m query --windows --space {}  | jq -sre "add | sort_by(.display, .frame.x, .frame.y, .id) | reverse | nth(index(map(select(.[\"has-focus\"] == true))) - 1).id"  | xargs -I{} yabai -m window --focus {}
+alt + shift - tab : yabai -m query --spaces  | jq -re ".[] | select(.[\"is-visible\"] == true).index"  | xargs -I{} yabai -m query --windows --space {}  | jq -sre "add | sort_by(.display, .frame.x, .frame.y, .id) | nth(index(map(select(.[\"has-focus\"] == true))) - 1).id"  | xargs -I{} yabai -m window --focus {}
+
+# toggle all window in a space to zoom-fullscreen
+ctrl + shift - tab : yabai -m query --windows --space | jq -re ".[] | select(.[\"has-fullscreen-zoom\"] == $(yabai -m query --windows | jq -re ".[] | select(.[\"has-focus\"] == true).[\"has-fullscreen-zoom\"]")) | .id" | xargs -I{} yabai -m window {} --toggle zoom-fullscreen
+
 # Control left-right,num to move between spaces
 ctrl - right : yabai -m space --focus next || yabai -m space --focus first;
 ctrl - left : yabai -m space --focus prev || yabai -m space --focus last;
