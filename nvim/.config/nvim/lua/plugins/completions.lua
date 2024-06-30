@@ -67,11 +67,11 @@ return {
         }),
         sources = cmp.config.sources({
           { name = "nvim_lsp" },
-          { name = "copilot" },
           { name = "buffer" },
           { name = "luasnip" },
-          { name = "path" },
           { name = "nvim_lua" },
+          { name = "copilot" },
+          { name = "path" },
           { name = "npm" },
         }, {
           { name = "buffer" },
@@ -82,6 +82,13 @@ return {
             maxwidth = 50,
             ellipsis_char = "...",
           }),
+        },
+      })
+      -- Setup up vim-dadbod
+      cmp.setup.filetype({ "sql" }, {
+        sources = {
+          { name = "vim-dadbod-completion" },
+          { name = "buffer" },
         },
       })
     end,
