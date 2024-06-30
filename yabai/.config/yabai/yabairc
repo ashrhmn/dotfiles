@@ -43,6 +43,7 @@ yabai -m rule --add app="^Enpass$" manage=off
 yabai -m rule --add app="^CleanShot X$" manage=off
 yabai -m rule --add app="^CleanMyMac X$" manage=off
 yabai -m rule --add app="^DeskPad$" manage=off
+yabai -m rule --add app="^BetterDisplay$" manage=off
 yabai -m rule --add app="^Zoom Workplace$" manage=off
 
 
