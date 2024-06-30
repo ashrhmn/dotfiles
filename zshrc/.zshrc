@@ -137,6 +137,7 @@ alias dcp="denv | pbcopy"
 alias mp="multipass"
 alias c="clear"
 alias e="exit"
+alias cat="bat"
 # alias pmgen="f(){echo \"module.exports = { apps: [{ name: '$1', script: '$2' }] };\">ecosystem.config.js};f"
 
 function pmgen(){
@@ -157,8 +158,8 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
-export PATH="$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
-export PATH="$HOME/go/bin/:$PATH"
+# export PATH="$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
+# export PATH="$HOME/go/bin/:$PATH"
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
@@ -203,8 +204,11 @@ export PATH="$HOME/flutter-sdk/flutter:$PATH"
 export PATH="$HOME/flutter-sdk/flutter/bin:$PATH"
 export PATH="$PATH":"$HOME/.pub-cache/bin"
 export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
+# export PATH="/Users/Shared/DBngin/mysql/8.0.33/bin:$PATH"
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
+
+export DBS_PATH="/Users/ash/Library/CloudStorage/GoogleDrive-ashrhmn@outlook.com/My Drive/Backup/secrets/databases.csv"
 
 eval "$(zoxide init --cmd cd zsh)"
 export PYENV_ROOT="$HOME/.pyenv"
