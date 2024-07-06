@@ -66,12 +66,12 @@ return {
           end, { "i", "s" }),
         }),
         sources = cmp.config.sources({
-          { name = "nvim_lsp" },
+          { name = "nvim_lsp", priority = 100 },
           { name = "buffer" },
-          { name = "luasnip" },
-          { name = "nvim_lua" },
+          { name = "luasnip", priority = 99 },
+          { name = "nvim_lua", priority = 98 },
           { name = "copilot" },
-          { name = "path" },
+          { name = "path", priority = 97 },
           { name = "npm" },
         }, {
           { name = "buffer" },
