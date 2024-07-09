@@ -41,3 +41,4 @@ keymap.set("n", "<leader>tp", "<cmd>tabp<CR>", { desc = "Go to previous tab" }) 
 keymap.set("n", "<leader>tf", "<cmd>tabnew %<CR>", { desc = "Open current buffer in new tab" }) --  move current buffer to new tab
 
 keymap.set("t", "<leader><ESC>", "<C-\\><C-n>", { noremap = true })
+keymap.set("t", "<ESC>", "<C-\\><C-n>", { noremap = true })

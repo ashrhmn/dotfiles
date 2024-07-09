@@ -1,7 +1,8 @@
 return {
   "stevearc/oil.nvim",
-  opts = {
-    {
+  dependencies = { "nvim-tree/nvim-web-devicons" },
+  config = function()
+    require("oil").setup({
       -- Oil will take over directory buffers (e.g. `vim .` or `:e src/`)
       -- Set to false if you still want to use netrw.
       default_file_explorer = false,
@@ -9,9 +10,9 @@ return {
       -- See :help oil-columns
       columns = {
         "icon",
-        "permissions",
-        "size",
-        "mtime",
+        -- "permissions",
+        -- "size",
+        -- "mtime",
       },
       -- Buffer-local options to use for oil buffers
       buf_options = {
@@ -30,9 +31,9 @@ return {
         concealcursor = "nvic",
       },
       -- Send deleted files to the trash instead of permanently deleting them (:help oil-trash)
-      delete_to_trash = false,
+      delete_to_trash = true,
       -- Skip the confirmation popup for simple operations (:help oil.skip_confirm_for_simple_edits)
-      skip_confirm_for_simple_edits = false,
+      skip_confirm_for_simple_edits = true,
       -- Selecting a new/moved/renamed file or directory will prompt you to save changes first
       -- (:help prompt_save_on_select_new_entry)
       prompt_save_on_select_new_entry = true,
@@ -62,11 +63,11 @@ return {
         ["g?"] = "actions.show_help",
         ["<CR>"] = "actions.select",
         ["<C-s>"] = { "actions.select", opts = { vertical = true }, desc = "Open the entry in a vertical split" },
-        ["<C-h>"] = { "actions.select", opts = { horizontal = true }, desc = "Open the entry in a horizontal split" },
+        ["<C-d>"] = { "actions.select", opts = { horizontal = true }, desc = "Open the entry in a horizontal split" },
         ["<C-t>"] = { "actions.select", opts = { tab = true }, desc = "Open the entry in new tab" },
         ["<C-p>"] = "actions.preview",
         ["<C-c>"] = "actions.close",
-        ["<C-l>"] = "actions.refresh",
+        ["<C-r>"] = "actions.refresh",
         ["-"] = "actions.parent",
         ["_"] = "actions.open_cwd",
         ["`"] = "actions.cd",
@@ -77,7 +78,7 @@ return {
         ["g\\"] = "actions.toggle_trash",
       },
       -- Set to false to disable all of the above keymaps
-      use_default_keymaps = true,
+      use_default_keymaps = false,
       view_options = {
         -- Show files and directories that start with "."
         show_hidden = true,
@@ -178,8 +179,7 @@ return {
       keymaps_help = {
         border = "rounded",
       },
-    },
-  },
-  -- Optional dependencies
-  dependencies = { "nvim-tree/nvim-web-devicons" },
+    })
+    vim.keymap.set("n", "<leader>o", ":Oil<CR>", { noremap = true, silent = true })
+  end,
 }
