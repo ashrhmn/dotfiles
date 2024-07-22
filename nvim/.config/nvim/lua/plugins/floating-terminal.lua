@@ -70,8 +70,9 @@ return {
     vim.api.nvim_create_user_command("FTermExit", fterm.exit, { bang = true })
     vim.api.nvim_create_user_command("FTermToggle", fterm.toggle, { bang = true })
 
-    vim.keymap.set("n", "<leader>tt", fterm.toggle, { noremap = true, silent = true })
-    vim.keymap.set("t", "<leader>tt", fterm.toggle, { noremap = true, silent = true })
+    vim.keymap.set({ "n", "t" }, "<C-t>", fterm.toggle, { noremap = true, silent = true })
+    -- vim.keymap.set("n", "<leader>tt", fterm.toggle, { noremap = true, silent = true })
+    -- vim.keymap.set("t", "<leader>tt", fterm.toggle, { noremap = true, silent = true })
 
     vim.api.nvim_create_user_command("PBuild", function()
       fterm.scratch({ cmd = { "pnpm", "build" } })
@@ -122,8 +123,9 @@ return {
 
     vim.api.nvim_create_user_command("PmLogs", togglePm2Logs, { bang = true })
 
-    vim.keymap.set("n", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
-    vim.keymap.set("t", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
+    vim.keymap.set({ "n", "t" }, "<C-p>", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
+    -- vim.keymap.set("n", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
+    -- vim.keymap.set("t", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
 
     local pmStartTerm = fterm:new({
       ft = "fterm_pmStart",
