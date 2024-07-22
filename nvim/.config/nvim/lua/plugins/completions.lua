@@ -70,9 +70,9 @@ return {
           { name = "buffer" },
           { name = "luasnip", priority = 99 },
           { name = "nvim_lua", priority = 98 },
-          { name = "copilot" },
           { name = "path", priority = 97 },
           { name = "npm" },
+          { name = "copilot" },
         }, {
           { name = "buffer" },
         }),
