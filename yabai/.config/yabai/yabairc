@@ -40,6 +40,7 @@ yabai -m rule --add app="^Karabiner-Elements$" manage=off
 yabai -m rule --add app="^QuickTime Player$" manage=off
 yabai -m rule --add app="^IINA$" manage=off
 yabai -m rule --add app="^Enpass$" manage=off
+yabai -m rule --add app="^NordVPN$" manage=off
 yabai -m rule --add app="^CleanShot X$" manage=off
 yabai -m rule --add app="^CleanMyMac X$" manage=off
 yabai -m rule --add app="^DeskPad$" manage=off
