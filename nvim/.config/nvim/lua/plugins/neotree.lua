@@ -142,7 +142,7 @@ return {
             -- this command supports BASH style brace expansion ("x{a,b,c}" -> xa,xb,xc). see `:h neo-tree-file-actions` for details
             -- some commands may take optional config options, see `:h neo-tree-mappings` for details
             config = {
-              show_path = "none", -- "none", "relative", "absolute"
+              show_path = "relative", -- "none", "relative", "absolute"
             },
           },
           ["A"] = "add_directory", -- also accepts the optional config.show_path option like "add". this also supports BASH style brace expansion.
@@ -151,20 +151,28 @@ return {
           ["y"] = "copy_to_clipboard",
           ["x"] = "cut_to_clipboard",
           ["p"] = "paste_from_clipboard",
-          ["c"] = "copy", -- takes text input for destination, also accepts the optional config.show_path option like "add":
-          -- ["c"] = {
-          --  "copy",
-          --  config = {
-          --    show_path = "none" -- "none", "relative", "absolute"
-          --  }
-          --}
-          ["m"] = "move", -- takes text input for destination, also accepts the optional config.show_path option like "add".
+          -- ["c"] = "copy", -- takes text input for destination, also accepts the optional config.show_path option like "add":
+          ["c"] = {
+            "copy",
+            config = {
+              show_path = "relative", -- "none", "relative", "absolute"
+            },
+          },
+          -- ["m"] = "move", -- takes text input for destination, also accepts the optional config.show_path option like "add".
+          ["m"] = {
+            "move",
+            config = {
+              show_path = "relative", -- "none", "relative", "absolute"
+            },
+          },
           ["q"] = "close_window",
           ["R"] = "refresh",
           ["?"] = "show_help",
           ["<"] = "prev_source",
           [">"] = "next_source",
           ["i"] = "show_file_details",
+          ["<C-n>"] = { "scroll_preview", config = { direction = -10 } },
+          ["<C-p>"] = { "scroll_preview", config = { direction = 10 } },
         },
       },
       nesting_rules = {},
