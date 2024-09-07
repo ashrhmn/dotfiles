@@ -1,5 +1,8 @@
 return {
   "neovim/nvim-lspconfig",
+  opts = {
+    inlay_hints = { enabled = true },
+  },
   event = { "BufReadPre", "BufNewFile" },
   dependencies = {
     "hrsh7th/cmp-nvim-lsp",
@@ -81,11 +84,47 @@ return {
       vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = "" })
     end
 
+    local function organize_ts_imports()
+      vim.lsp.buf.execute_command({
+        command = "_typescript.organizeImports",
+        arguments = { vim.api.nvim_buf_get_name(0) },
+        title = "Organize Imports",
+      })
+    end
+
     mason_lspconfig.setup_handlers({
       -- default handler for installed servers
       function(server_name)
         lspconfig[server_name].setup({
           capabilities = capabilities,
+        })
+      end,
+      ["tsserver"] = function()
+        lspconfig["tsserver"].setup({
+          capabilities = capabilities,
+          on_attach = function(client, bufnr)
+            vim.lsp.inlay_hint.enable(true)
+          end,
+          init_options = {
+            hostInfo = "neovim",
+            preferences = {
+              importModuleSpecifierPreference = "non-relative",
+              includeInlayParameterNameHints = "all",
+              includeInlayParameterNameHintsWhenArgumentMatchesName = false,
+              includeInlayFunctionParameterTypeHints = false,
+              includeInlayVariableTypeHints = false,
+              includeInlayVariableTypeHintsWhenTypeMatchesName = false,
+              includeInlayPropertyDeclarationTypeHints = true,
+              includeInlayFunctionLikeReturnTypeHints = true,
+              includeInlayEnumMemberValueHints = true,
+            },
+          },
+          commands = {
+            OrganizeImports = {
+              organize_ts_imports,
+              description = "Organize Imports",
+            },
+          },
         })
       end,
       ["svelte"] = function()
@@ -167,6 +206,19 @@ return {
             json = {
               schemas = require("schemastore").json.schemas(),
               validate = { enable = true },
+            },
+          },
+        })
+      end,
+      ["tailwindcss"] = function()
+        lspconfig["tailwindcss"].setup({
+          capabilities = capabilities,
+          filetypes = { "templ", "astro", "javascript", "typescript", "react", "svelte", "vue", "html" },
+          settings = {
+            tailwindCSS = {
+              includeLanguages = {
+                templ = "html",
+              },
             },
           },
         })
