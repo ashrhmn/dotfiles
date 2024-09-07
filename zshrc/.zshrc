@@ -200,6 +200,7 @@ export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
 # export PATH="$HOME/flutter-sdk/flutter:$PATH"
 # export PATH="$HOME/flutter-sdk/flutter/bin:$PATH"
 export PATH="$PATH":"$HOME/.pub-cache/bin"
+export PATH="$PATH":"$HOME/go/bin"
 export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
 # export PATH="/Users/Shared/DBngin/mysql/8.0.33/bin:$PATH"
 export LANG=en_US.UTF-8
