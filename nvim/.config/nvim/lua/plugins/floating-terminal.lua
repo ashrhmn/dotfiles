@@ -75,16 +75,20 @@ return {
     -- vim.keymap.set("t", "<leader>tt", fterm.toggle, { noremap = true, silent = true })
 
     vim.api.nvim_create_user_command("PBuild", function()
+      ---@diagnostic disable-next-line missing-fields
       fterm.scratch({ cmd = { "pnpm", "build" } })
     end, { bang = true })
 
     vim.api.nvim_create_user_command("PInstall", function()
+      ---@diagnostic disable-next-line missing-fields
       fterm.scratch({ cmd = { "pnpm", "i" } })
     end, { bang = true })
 
+    ---@diagnostic disable-next-line missing-fields
     local btop = fterm:new({
       ft = "fterm_btop",
       cmd = "btop",
+      ---@diagnostic disable-next-line missing-fields
       dimensions = {
         height = 0.9,
         width = 0.9,
@@ -95,9 +99,11 @@ return {
       btop:toggle()
     end, { bang = true })
 
+    ---@diagnostic disable-next-line missing-fields
     local ghBrowse = fterm:new({
       ft = "fterm_gbrowse",
       cmd = "gh browse",
+      ---@diagnostic disable-next-line missing-fields
       dimensions = {
         height = 0.9,
         width = 0.9,
@@ -108,9 +114,11 @@ return {
       ghBrowse:toggle()
     end, { bang = true })
 
+    ---@diagnostic disable-next-line missing-fields
     local pm2Logs = fterm:new({
       ft = "fterm_pm2Logs",
       cmd = "pm2 logs",
+      ---@diagnostic disable-next-line missing-fields
       dimensions = {
         height = 0.9,
         width = 0.9,
@@ -127,9 +135,11 @@ return {
     -- vim.keymap.set("n", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
     -- vim.keymap.set("t", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
 
+    ---@diagnostic disable-next-line missing-fields
     local pmStartTerm = fterm:new({
       ft = "fterm_pmStart",
-      cmd = "pm2 start ecosystem.config.js",
+      cmd = "pm2 start ecosystem.config.cjs",
+      ---@diagnostic disable-next-line missing-fields
       dimensions = {
         height = 0.9,
         width = 0.9,
@@ -142,9 +152,11 @@ return {
 
     vim.api.nvim_create_user_command("PmStart", pmStart, { bang = true })
 
+    ---@diagnostic disable-next-line missing-fields
     local pmStopTerm = fterm:new({
       ft = "fterm_pmStop",
-      cmd = "pm2 delete ecosystem.config.js",
+      cmd = "pm2 delete ecosystem.config.cjs",
+      ---@diagnostic disable-next-line missing-fields
       dimensions = {
         height = 0.9,
         width = 0.9,
@@ -157,9 +169,11 @@ return {
 
     vim.api.nvim_create_user_command("PmStop", pmStop, { bang = true })
 
+    ---@diagnostic disable-next-line missing-fields
     local pmRestartTerm = fterm:new({
       ft = "fterm_pmRestart",
-      cmd = "pm2 restart ecosystem.config.js",
+      cmd = "pm2 restart ecosystem.config.cjs",
+      ---@diagnostic disable-next-line missing-fields
       dimensions = {
         height = 0.9,
         width = 0.9,

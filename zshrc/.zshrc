@@ -158,10 +158,12 @@ alias dcp="denv | pbcopy"
 alias mp="multipass"
 alias c="clear"
 alias e="exit"
+alias t="tmux"
+alias ta="tmux attach || tmux"
 alias cat="bat"
 
 function pmgen(){
-  echo "module.exports = { apps: [{ name: '$1', script: '${@:2}' }] };">ecosystem.config.js;
+  echo "module.exports = { apps: [{ name: '$1', script: '${@:2}' }] };">ecosystem.config.cjs;
 }
 
 export PATH="$HOME/Library/Python/3.8/bin/:$PATH"
@@ -202,6 +204,7 @@ export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
 export PATH="$PATH":"$HOME/.pub-cache/bin"
 export PATH="$PATH":"$HOME/go/bin"
 export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
+export PATH="/Users/ash/.local/share/solana/install/active_release/bin:$PATH"
 # export PATH="/Users/Shared/DBngin/mysql/8.0.33/bin:$PATH"
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
@@ -223,4 +226,10 @@ eval "$(tmuxifier init -)"
 source <(fzf --zsh)
 
 alias inv='nvim $(fzf -m --preview="bat --color=always {}")'
+
+export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
+export LDFLAGS="-L/opt/homebrew/opt/libpq/lib"
+export CPPFLAGS="-I/opt/homebrew/opt/libpq/include"
+
+export PATH="/Users/ash/.dotnet:$PATH"
 

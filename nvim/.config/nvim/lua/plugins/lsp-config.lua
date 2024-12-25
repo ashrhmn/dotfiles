@@ -102,9 +102,9 @@ return {
       ["tsserver"] = function()
         lspconfig["tsserver"].setup({
           capabilities = capabilities,
-          on_attach = function(client, bufnr)
-            vim.lsp.inlay_hint.enable(true)
-          end,
+          -- on_attach = function(client, bufnr)
+          --   vim.lsp.inlay_hint.enable(true)
+          -- end,
           init_options = {
             hostInfo = "neovim",
             preferences = {
@@ -221,6 +221,13 @@ return {
               },
             },
           },
+        })
+      end,
+      ["omnisharp"] = function()
+        lspconfig["omnisharp"].setup({
+          capabilities = capabilities,
+          cmd = { "dotnet", "/opt/homebrew/Cellar/omnisharp/1.35.3/bin/omnisharp/OmniSharp.LanguageServerProtocol.dll" },
+          filetypes = { "csharp" },
         })
       end,
     })

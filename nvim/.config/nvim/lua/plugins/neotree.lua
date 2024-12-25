@@ -201,6 +201,7 @@ return {
             "thumbs.db",
           },
           never_show_by_pattern = { -- uses glob style patterns
+            "*_templ.go",
             --".null-ls_*",
           },
         },

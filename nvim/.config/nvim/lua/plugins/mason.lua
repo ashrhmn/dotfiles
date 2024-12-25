@@ -36,12 +36,15 @@ return {
         -- "graphql",
         "emmet_ls",
         "prismals",
-        -- "pyright",
+        "pyright",
         "jsonls",
         "yamlls",
         "solidity_ls_nomicfoundation",
         "gopls",
         "templ",
+        "rust_analyzer",
+        -- "csharp_ls",
+        "omnisharp",
       },
     })
 
