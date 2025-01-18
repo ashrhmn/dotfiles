@@ -33,8 +33,8 @@ return {
       ---The value for each field should be between `0` and `1`
       ---@type table<string,number>
       dimensions = {
-        height = 0.9, -- Height of the terminal window
-        width = 0.9, -- Width of the terminal window
+        height = 0.95, -- Height of the terminal window
+        width = 0.95, -- Width of the terminal window
         x = 0.5, -- X axis of the terminal window
         y = 0.5, -- Y axis of the terminal window
       },
@@ -90,8 +90,8 @@ return {
       cmd = "btop",
       ---@diagnostic disable-next-line missing-fields
       dimensions = {
-        height = 0.9,
-        width = 0.9,
+        height = 0.95,
+        width = 0.95,
       },
     })
 
@@ -105,8 +105,8 @@ return {
       cmd = "gh browse",
       ---@diagnostic disable-next-line missing-fields
       dimensions = {
-        height = 0.9,
-        width = 0.9,
+        height = 0.95,
+        width = 0.95,
       },
     })
 
@@ -120,8 +120,8 @@ return {
       cmd = "pm2 logs",
       ---@diagnostic disable-next-line missing-fields
       dimensions = {
-        height = 0.9,
-        width = 0.9,
+        height = 0.95,
+        width = 0.95,
       },
     })
 
@@ -141,8 +141,8 @@ return {
       cmd = "pm2 start ecosystem.config.cjs",
       ---@diagnostic disable-next-line missing-fields
       dimensions = {
-        height = 0.9,
-        width = 0.9,
+        height = 0.95,
+        width = 0.95,
       },
     })
 
@@ -158,8 +158,8 @@ return {
       cmd = "pm2 delete ecosystem.config.cjs",
       ---@diagnostic disable-next-line missing-fields
       dimensions = {
-        height = 0.9,
-        width = 0.9,
+        height = 0.95,
+        width = 0.95,
       },
     })
 
@@ -175,8 +175,8 @@ return {
       cmd = "pm2 restart ecosystem.config.cjs",
       ---@diagnostic disable-next-line missing-fields
       dimensions = {
-        height = 0.9,
-        width = 0.9,
+        height = 0.95,
+        width = 0.95,
       },
     })
 
