@@ -84,6 +84,17 @@ return {
       vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = "" })
     end
 
+    local function organize_go_imports()
+      -- vim.lsp.buf.execute_command({
+      --   command = "_gopls.organizeImports",
+      --   arguments = { vim.api.nvim_buf_get_name(0) },
+      --   title = "Organize Imports",
+      -- })
+      vim.lsp.buf.format()
+      vim.lsp.buf.code_action({ context = { only = { "source.organizeImports" } }, apply = true })
+      vim.lsp.buf.code_action({ context = { only = { "source.fixAll" } }, apply = true })
+    end
+
     local function organize_ts_imports()
       vim.lsp.buf.execute_command({
         command = "_typescript.organizeImports",
@@ -99,6 +110,19 @@ return {
           capabilities = capabilities,
         })
       end,
+      ["gopls"] = function()
+        -- configure graphql language server
+        lspconfig["gopls"].setup({
+          capabilities = capabilities,
+          commands = {
+            OrganizeImports = {
+              organize_go_imports,
+              description = "Organize Imports",
+            },
+          },
+        })
+      end,
+
       ["tsserver"] = function()
         lspconfig["tsserver"].setup({
           capabilities = capabilities,
@@ -114,9 +138,9 @@ return {
               includeInlayFunctionParameterTypeHints = false,
               includeInlayVariableTypeHints = false,
               includeInlayVariableTypeHintsWhenTypeMatchesName = false,
-              includeInlayPropertyDeclarationTypeHints = true,
-              includeInlayFunctionLikeReturnTypeHints = true,
-              includeInlayEnumMemberValueHints = true,
+              includeInlayPropertyDeclarationTypeHints = false,
+              includeInlayFunctionLikeReturnTypeHints = false,
+              includeInlayEnumMemberValueHints = false,
             },
           },
           commands = {

@@ -45,6 +45,7 @@ return {
         "rust_analyzer",
         -- "csharp_ls",
         "omnisharp",
+        "htmx",
       },
     })
 
