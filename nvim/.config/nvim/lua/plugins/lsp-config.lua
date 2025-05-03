@@ -123,8 +123,8 @@ return {
         })
       end,
 
-      ["tsserver"] = function()
-        lspconfig["tsserver"].setup({
+      ["ts_ls"] = function()
+        lspconfig["ts_ls"].setup({
           capabilities = capabilities,
           -- on_attach = function(client, bufnr)
           --   vim.lsp.inlay_hint.enable(true)

@@ -115,6 +115,22 @@ return {
     end, { bang = true })
 
     ---@diagnostic disable-next-line missing-fields
+    local pm2Monit = fterm:new({
+      ft = "fterm_pm2Monit",
+      cmd = "pm2 monit",
+      ---@diagnostic disable-next-line missing-fields
+      dimensions = {
+        height = 0.95,
+        width = 0.95,
+      },
+    })
+    local togglePm2Monit = function()
+      pm2Monit:toggle()
+    end
+    vim.api.nvim_create_user_command("PmMonit", togglePm2Monit, { bang = true })
+    -- vim.keymap.set({ "n", "t" }, "<C-m>", togglePm2Monit, { noremap = true, silent = true, desc = "PM Monit" })
+
+    ---@diagnostic disable-next-line missing-fields
     local pm2Logs = fterm:new({
       ft = "fterm_pm2Logs",
       cmd = "pm2 logs",
@@ -124,16 +140,11 @@ return {
         width = 0.95,
       },
     })
-
     local togglePm2Logs = function()
       pm2Logs:toggle()
     end
-
     vim.api.nvim_create_user_command("PmLogs", togglePm2Logs, { bang = true })
-
     vim.keymap.set({ "n", "t" }, "<C-p>", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
-    -- vim.keymap.set("n", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
-    -- vim.keymap.set("t", "<leader>pl", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
 
     ---@diagnostic disable-next-line missing-fields
     local pmStartTerm = fterm:new({
@@ -188,6 +199,6 @@ return {
 
     vim.keymap.set("n", "<leader>ps", pmStart, { noremap = true, silent = true, desc = "PM Start" })
     vim.keymap.set("n", "<leader>pk", pmStop, { noremap = true, silent = true, desc = "PM Stop" })
-    vim.keymap.set("n", "<leader>pr", pmRestart, { noremap = true, silent = true, desc = "PM Stop" })
+    vim.keymap.set("n", "<leader>pr", pmRestart, { noremap = true, silent = true, desc = "PM Restart" })
   end,
 }
