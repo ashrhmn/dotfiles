@@ -163,7 +163,7 @@ alias ta="tmux attach || tmux"
 alias cat="bat"
 
 function pmgen(){
-  echo "module.exports = { apps: [{ name: '$1', script: '${@:2}' }] };">ecosystem.config.cjs;
+  echo "module.exports = { apps: [{ name: '$1', script: '${@:2}', time: true, out_file: './app.log', error_file: './err.log' }] };">ecosystem.config.cjs;
 }
 
 export PATH="$HOME/Library/Python/3.8/bin/:$PATH"
