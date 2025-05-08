@@ -87,6 +87,7 @@ plugins=(
 )
 
 source $ZSH/oh-my-zsh.sh
+source $HOME/.secrets.sh
 
 # User configuration
 
@@ -233,3 +234,6 @@ export CPPFLAGS="-I/opt/homebrew/opt/libpq/include"
 
 export PATH="/Users/ash/.dotnet:$PATH"
 
+# Stripe Auto Completion
+fpath=(~/.stripe $fpath)
+autoload -Uz compinit && compinit -i
