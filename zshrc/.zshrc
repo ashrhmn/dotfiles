@@ -237,3 +237,6 @@ export PATH="/Users/ash/.dotnet:$PATH"
 # Stripe Auto Completion
 fpath=(~/.stripe $fpath)
 autoload -Uz compinit && compinit -i
+
+[[ ":$PATH:" != *":$HOME/.bin:"* ]] && PATH="$HOME/.bin:$PATH"
+

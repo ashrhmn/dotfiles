@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# pm2logs — 14 May 2025
+# Stream logs for every `name:` in ecosystem.config.cjs (or given file).
+
+set -euo pipefail
+
+cfg=${1:-ecosystem.config.cjs}
+[[ -r $cfg ]] || { echo "❌ cannot read $cfg" >&2; exit 1; }
+
+names=()
+while IFS= read -r n; do names+=("$n"); done < <(
+  grep -oE 'name[[:space:]]*:[[:space:]]*["'\''"][^"'\''"]+["'\''"]' "$cfg" |
+  sed -E 's/.*["'\''"]([^"'\''"]+)["'\''"].*/\1/'
+)
+
+((${#names[@]})) || { echo "❌ no app names found" >&2; exit 1; }
+
+IFS='|'; pattern="/(${names[*]})/"; IFS=$' \t\n'
+exec pm2 logs "$pattern"    # replace shell with pm2; long-running
