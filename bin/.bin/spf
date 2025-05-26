@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_NAME=$(basename "$0")
+
+usage() {
+  cat <<EOF
+Usage: ${SCRIPT_NAME} [ssh options] [-P SSH_PORT] [-L REMOTE_CSV] [-R LOCAL_CSV] -- user@host [more ssh options]
+
+Options:
+  -P SSH_PORT           SSH port on remote host (default: 22)
+  -L REMOTE_CSV         Comma-separated ports or ranges to forward REMOTE→LOCAL
+  -R LOCAL_CSV          Comma-separated ports or ranges to forward LOCAL→REMOTE
+                          (At least one of -L or -R is required)
+  --                    End of script options; the first arg after -- must be user@host,
+                          the rest are passed to ssh
+  -h, --help            Show this help and exit
+
+Examples:
+  # Forward remote 3000–3005 → your localhost:
+  ${SCRIPT_NAME} -L 3000-3005 -- ash@192.168.68.63
+
+  # Forward local 5432,6379 → remote:
+  ${SCRIPT_NAME} -R 5432,6379 -- ash@192.168.68.63
+
+  # Do both, on SSH port 23, with an identity file:
+  ${SCRIPT_NAME} -P 23 -L 3000-3005,5000-5003 -R 5432,6379 \\
+      -- ash@192.168.68.63 -i ~/.ssh/id_rsa -v
+EOF
+}
+
+# defaults
+SSH_PORT=22
+USER=""
+HOST=""
+REMOTE_CSV=""
+LOCAL_CSV=""
+EXTRA_SSH=()
+
+# parse flags
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -P) SSH_PORT="$2"; shift 2;;
+    -L) REMOTE_CSV="$2"; shift 2;;
+    -R) LOCAL_CSV="$2"; shift 2;;
+    --) shift; EXTRA_SSH=("$@"); break;;
+    -h|--help) usage; exit 0;;
+    *)  echo "Unknown option: $1" >&2; usage; exit 1;;
+  esac
+done
+
+# extract user@host from EXTRA_SSH
+if (( ${#EXTRA_SSH[@]} == 0 )); then
+  echo "Error: you must provide user@host after --" >&2
+  usage
+  exit 1
+fi
+
+if [[ ${EXTRA_SSH[0]} =~ ^([^@]+)@([^@]+)$ ]]; then
+  USER="${BASH_REMATCH[1]}"
+  HOST="${BASH_REMATCH[2]}"
+  EXTRA_SSH=("${EXTRA_SSH[@]:1}")
+else
+  echo "Error: first argument after -- must be in user@host format" >&2
+  usage
+  exit 1
+fi
+
+# validate required
+if [[ -z "$REMOTE_CSV" && -z "$LOCAL_CSV" ]]; then
+  echo "Error: you must provide at least one of -L or -R" >&2
+  usage
+  exit 1
+fi
+
+# helper to expand CSV with numeric ranges
+_expand_ports() {
+  local csv=$1
+  IFS=',' read -ra parts <<< "$csv"
+  for part in "${parts[@]}"; do
+    if [[ $part =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      local start=${BASH_REMATCH[1]}
+      local end=${BASH_REMATCH[2]}
+      if (( start > end )); then
+        echo "Invalid range: $part" >&2
+        exit 1
+      fi
+      for ((p = start; p <= end; p++)); do
+        echo "$p"
+      done
+    else
+      echo "$part"
+    fi
+  done
+}
+
+# helper to format port ranges for summary
+_format_port_summary() {
+  local csv=$1
+  IFS=',' read -ra parts <<< "$csv"
+  for part in "${parts[@]}"; do
+    echo "$part → $part"
+  done
+}
+
+# print a concise summary
+echo "=== Port forwarding summary ==="
+if [[ -n "$REMOTE_CSV" ]]; then
+  while read -r line; do
+    echo "Remote → Local: $line"
+  done < <(_format_port_summary "$REMOTE_CSV")
+fi
+if [[ -n "$LOCAL_CSV" ]]; then
+  while read -r line; do
+    echo "Local → Remote: $line"
+  done < <(_format_port_summary "$LOCAL_CSV")
+fi
+echo "Launching SSH tunnel (quiet mode)..."
+
+# build ssh command
+cmd=( ssh -q -o LogLevel=ERROR -N -p "$SSH_PORT" )
+if (( ${#EXTRA_SSH[@]} )); then
+  cmd+=( "${EXTRA_SSH[@]}" )
+fi
+
+# add remote→local forwards
+if [[ -n "$REMOTE_CSV" ]]; then
+  while read -r port; do
+    cmd+=( -L "${port}:localhost:${port}" )
+  done < <(_expand_ports "$REMOTE_CSV")
+fi
+
+# add local→remote forwards
+if [[ -n "$LOCAL_CSV" ]]; then
+  while read -r port; do
+    cmd+=( -R "${port}:localhost:${port}" )
+  done < <(_expand_ports "$LOCAL_CSV")
+fi
+
+# target
+cmd+=( "${USER}@${HOST}" )
+
+# execute and suppress any leftover ssh warnings
+exec "${cmd[@]}" 2>/dev/null
