@@ -31,7 +31,7 @@ return {
       -- list of servers for mason to install
       ensure_installed = {
         "ts_ls",
-        "tsserver",
+        -- "tsserver",
         "html",
         "cssls",
         "tailwindcss",
@@ -75,6 +75,8 @@ return {
     local cmp_nvim_lsp = require("cmp_nvim_lsp") -- import cmp-nvim-lsp plugin
     local capabilities = cmp_nvim_lsp.default_capabilities() -- used to enable autocompletion (assign to every lsp server config)
 
+    vim.keymap.set("n", "<leader>ta", ":LspTypescriptSourceAction<CR>", { desc = "LspTypescriptSourceAction" })
+
     mason_tool_installer.setup({
       ensure_installed = {
         "prettier", -- prettier formatter
@@ -107,7 +109,6 @@ return {
         end,
 
         ["ts_ls"] = function()
-          print(capabilities)
           lspconfig["ts_ls"].setup({
             capabilities = capabilities,
             on_attach = function(client, bufnr)
@@ -135,6 +136,35 @@ return {
             },
           })
         end,
+
+        -- ["tsserver"] = function()
+        --   lspconfig["tsserver"].setup({
+        --     capabilities = capabilities,
+        --     on_attach = function(client, bufnr)
+        --       vim.lsp.inlay_hint.enable(true)
+        --     end,
+        --     init_options = {
+        --       hostInfo = "neovim",
+        --       preferences = {
+        --         importModuleSpecifierPreference = "non-relative",
+        --         includeInlayParameterNameHints = "all",
+        --         includeInlayParameterNameHintsWhenArgumentMatchesName = false,
+        --         includeInlayFunctionParameterTypeHints = false,
+        --         includeInlayVariableTypeHints = false,
+        --         includeInlayVariableTypeHintsWhenTypeMatchesName = false,
+        --         includeInlayPropertyDeclarationTypeHints = false,
+        --         includeInlayFunctionLikeReturnTypeHints = false,
+        --         includeInlayEnumMemberValueHints = false,
+        --       },
+        --     },
+        --     commands = {
+        --       OrganizeImports = {
+        --         organize_ts_imports,
+        --         description = "Organize Imports",
+        --       },
+        --     },
+        --   })
+        -- end,
 
         ["svelte"] = function()
           -- configure svelte server
