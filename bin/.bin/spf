@@ -5,16 +5,28 @@ SCRIPT_NAME=$(basename "$0")
 
 usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [ssh options] [-P SSH_PORT] [-L REMOTE_CSV] [-R LOCAL_CSV] -- user@host [more ssh options]
+Usage: ${SCRIPT_NAME} [ssh options] [-P SSH_PORT] [-L REMOTE_CSV] [-R LOCAL_CSV] [--retry RETRIES] [--delay DELAY] [--find-processes] -- user@host [more ssh options]
 
 Options:
   -P SSH_PORT           SSH port on remote host (default: 22)
   -L REMOTE_CSV         Comma-separated ports or ranges to forward REMOTE→LOCAL
   -R LOCAL_CSV          Comma-separated ports or ranges to forward LOCAL→REMOTE
                           (At least one of -L or -R is required)
+  --retry RETRIES       Number of connection retries on failure (default: 3)
+  --delay DELAY         Delay in seconds between retries (default: 5)
+  --find-processes      Find and display running SSH port forwarding processes
   --                    End of script options; the first arg after -- must be user@host,
                           the rest are passed to ssh
   -h, --help            Show this help and exit
+
+Port Forwarding Types:
+  -L (Local/Remote→Local):  Forwards remote ports to your local machine
+                           Example: -L 3000 makes remote:3000 available at localhost:3000
+                           ⚠️  Checks for local port conflicts
+  
+  -R (Remote/Local→Remote): Forwards your local ports to remote machine  
+                           Example: -R 5432 makes localhost:5432 available at remote:5432
+                           ℹ️  No local port conflict checking needed
 
 Examples:
   # Forward remote 3000–3005 → your localhost:
@@ -23,9 +35,19 @@ Examples:
   # Forward local 5432,6379 → remote:
   ${SCRIPT_NAME} -R 5432,6379 -- ash@192.168.68.63
 
-  # Do both, on SSH port 23, with an identity file:
-  ${SCRIPT_NAME} -P 23 -L 3000-3005,5000-5003 -R 5432,6379 \\
+  # Do both, on SSH port 23, with retries and custom delay:
+  ${SCRIPT_NAME} -P 23 -L 3000-3005,5000-5003 -R 5432,6379 --retry 5 --delay 10 \\
       -- ash@192.168.68.63 -i ~/.ssh/id_rsa -v
+
+Process Management:
+  # Find running SSH tunnels:
+  ${SCRIPT_NAME} --find-processes
+  
+  # Kill specific tunnel:
+  kill <PID>
+  
+  # Kill all SSH tunnels:
+  pkill -f 'ssh.*-[LR]'
 EOF
 }
 
@@ -36,6 +58,130 @@ HOST=""
 REMOTE_CSV=""
 LOCAL_CSV=""
 EXTRA_SSH=()
+RETRIES=3
+DELAY=5
+SSH_PID=""
+
+# cleanup function
+cleanup() {
+  local exit_code=$?
+  if [[ -n "$SSH_PID" ]] && kill -0 "$SSH_PID" 2>/dev/null; then
+    echo -e "\n⚠️  Cleaning up SSH tunnel (PID: $SSH_PID)..."
+    kill "$SSH_PID" 2>/dev/null || true
+    wait "$SSH_PID" 2>/dev/null || true
+  fi
+  
+  if [[ $exit_code -eq 0 ]]; then
+    echo "✅ SSH tunnel terminated cleanly"
+  else
+    echo "❌ SSH tunnel terminated with error (exit code: $exit_code)"
+  fi
+  exit $exit_code
+}
+
+# signal handlers
+trap cleanup EXIT
+trap 'echo -e "\n🛑 Interrupted by user"; exit 130' INT TERM
+
+# find running SSH port forwarding processes
+find_ssh_processes() {
+  echo "🔍 Finding running SSH port forwarding processes..."
+  echo
+  
+  local found=false
+  while IFS= read -r line; do
+    if [[ -n "$line" ]]; then
+      found=true
+      echo "📌 $line"
+    fi
+  done < <(ps aux | grep '[s]sh.*-[LR]' | grep -v grep)
+  
+  if [[ "$found" == "false" ]]; then
+    echo "✅ No SSH port forwarding processes found"
+  else
+    echo
+    echo "💡 To kill a specific process: kill <PID>"
+    echo "💡 To kill all SSH tunnels: pkill -f 'ssh.*-[LR]'"
+  fi
+  echo
+}
+
+# error handling function
+handle_ssh_error() {
+  local exit_code=$1
+  case $exit_code in
+    1)   echo "❌ Generic SSH error - check your SSH configuration" ;;
+    2)   echo "❌ SSH connection failed - protocol error" ;;
+    65)  echo "❌ SSH host not allowed to connect" ;;
+    66)  echo "❌ SSH connection failed - host unreachable" ;;
+    67)  echo "❌ SSH connection failed - connection refused" ;;
+    68)  echo "❌ SSH connection failed - host unknown" ;;
+    69)  echo "❌ SSH connection failed - service unavailable" ;;
+    70)  echo "❌ SSH connection failed - protocol not available" ;;
+    73)  echo "❌ SSH connection failed - permission denied" ;;
+    76)  echo "❌ SSH connection failed - protocol not supported" ;;
+    255) echo "❌ SSH connection failed - connection terminated" ;;
+    *)   echo "❌ SSH failed with exit code: $exit_code" ;;
+  esac
+}
+
+# port availability check
+check_local_ports() {
+  local ports_to_check=()
+  
+  # Only check LOCAL BINDING ports (for -L forwards, not -R forwards)
+  # -L forwards: remote→local, so we bind to LOCAL ports (need to check conflicts)
+  # -R forwards: local→remote, so we bind to REMOTE ports (no local conflicts)
+  if [[ -n "$REMOTE_CSV" ]]; then
+    echo "🔍 Checking local port availability for remote→local forwards..."
+    while read -r port; do
+      ports_to_check+=("$port")
+    done < <(_expand_ports "$REMOTE_CSV")
+  fi
+  
+  # early return if no ports to check
+  if [[ ${#ports_to_check[@]} -eq 0 ]]; then
+    return 0
+  fi
+  
+  local conflicts=()
+  for port in "${ports_to_check[@]}"; do
+    if lsof -i ":$port" -sTCP:LISTEN >/dev/null 2>&1; then
+      conflicts+=("$port")
+    fi
+  done
+  
+  if [[ ${#conflicts[@]} -gt 0 ]]; then
+    echo "⚠️  Warning: The following ports are already in use:"
+    printf "   %s\n" "${conflicts[@]}"
+    echo "   This may cause port forwarding conflicts."
+    echo -n "   Continue anyway? [y/N] "
+    read -r response
+    if [[ ! "$response" =~ ^[Yy]$ ]]; then
+      echo "❌ Aborted by user"
+      exit 1
+    fi
+  fi
+}
+
+# connection test
+test_ssh_connection() {
+  echo "🔍 Testing SSH connection to $USER@$HOST:$SSH_PORT..."
+  
+  local test_cmd=(ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -p "$SSH_PORT")
+  if (( ${#EXTRA_SSH[@]} )); then
+    test_cmd+=("${EXTRA_SSH[@]}")
+  fi
+  test_cmd+=("$USER@$HOST" "echo 'SSH connection successful'")
+  
+  if "${test_cmd[@]}" >/dev/null 2>&1; then
+    echo "✅ SSH connection test passed"
+    return 0
+  else
+    echo "❌ SSH connection test failed"
+    return 1
+  fi
+}
 
 # parse flags
 while [[ $# -gt 0 ]]; do
@@ -43,6 +189,9 @@ while [[ $# -gt 0 ]]; do
     -P) SSH_PORT="$2"; shift 2;;
     -L) REMOTE_CSV="$2"; shift 2;;
     -R) LOCAL_CSV="$2"; shift 2;;
+    --retry) RETRIES="$2"; shift 2;;
+    --delay) DELAY="$2"; shift 2;;
+    --find-processes) find_ssh_processes; exit 0;;
     --) shift; EXTRA_SSH=("$@"); break;;
     -h|--help) usage; exit 0;;
     *)  echo "Unknown option: $1" >&2; usage; exit 1;;
@@ -70,6 +219,17 @@ fi
 if [[ -z "$REMOTE_CSV" && -z "$LOCAL_CSV" ]]; then
   echo "Error: you must provide at least one of -L or -R" >&2
   usage
+  exit 1
+fi
+
+# validate numeric arguments
+if ! [[ "$RETRIES" =~ ^[0-9]+$ ]] || (( RETRIES < 0 )); then
+  echo "Error: --retry must be a non-negative number" >&2
+  exit 1
+fi
+
+if ! [[ "$DELAY" =~ ^[0-9]+$ ]] || (( DELAY < 0 )); then
+  echo "Error: --delay must be a non-negative number" >&2
   exit 1
 fi
 
@@ -103,22 +263,34 @@ _format_port_summary() {
   done
 }
 
+echo "🚀 Starting SSH Port Forwarder"
+echo "📡 Target: $USER@$HOST:$SSH_PORT"
+
+# check for port conflicts
+check_local_ports
+
 # print a concise summary
 echo "=== Port forwarding summary ==="
 if [[ -n "$REMOTE_CSV" ]]; then
+  echo "📥 Remote → Local forwards (listening on localhost):"
   while read -r line; do
-    echo "Remote → Local: $line"
+    echo "   $line"
   done < <(_format_port_summary "$REMOTE_CSV")
 fi
 if [[ -n "$LOCAL_CSV" ]]; then
+  echo "📤 Local → Remote forwards (available on remote):"
   while read -r line; do
-    echo "Local → Remote: $line"
+    echo "   $line"
   done < <(_format_port_summary "$LOCAL_CSV")
 fi
-echo "Launching SSH tunnel (quiet mode)..."
+
+# test connection first
+if ! test_ssh_connection; then
+  echo "❌ Initial connection test failed. Attempting with retries..."
+fi
 
 # build ssh command
-cmd=( ssh -q -o LogLevel=ERROR -N -p "$SSH_PORT" )
+cmd=( ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=no -o LogLevel=ERROR -N -p "$SSH_PORT" )
 if (( ${#EXTRA_SSH[@]} )); then
   cmd+=( "${EXTRA_SSH[@]}" )
 fi
@@ -140,5 +312,108 @@ fi
 # target
 cmd+=( "${USER}@${HOST}" )
 
-# execute and suppress any leftover ssh warnings
-exec "${cmd[@]}" 2>/dev/null
+# connection loop with retries
+attempt=1
+while (( attempt <= RETRIES + 1 )); do
+  if (( attempt > 1 )); then
+    echo "🔄 Attempt $attempt/$(( RETRIES + 1 )) (waiting ${DELAY}s...)"
+    sleep "$DELAY"
+  else
+    echo "🔗 Establishing SSH tunnel..."
+  fi
+  
+  # start SSH tunnel with shorter timeout
+  ssh_log=$(mktemp)
+  "${cmd[@]}" -o ConnectTimeout=8 2>"$ssh_log" &
+  SSH_PID=$!
+  
+  # wait for initial connection attempt
+  waited=0
+  max_wait=10
+  connected=false
+  
+  while (( waited < max_wait )) && kill -0 "$SSH_PID" 2>/dev/null; do
+    sleep 1
+    ((waited++))
+    
+    # After a few seconds, test if we can actually use a forwarded port
+    if (( waited >= 4 )) && [[ -n "$REMOTE_CSV" ]]; then
+      # Try to test one of the forwarded ports
+      first_port=$(echo "$REMOTE_CSV" | cut -d',' -f1 | cut -d'-' -f1)
+      if nc -z localhost "$first_port" 2>/dev/null; then
+        connected=true
+        break
+      fi
+    fi
+    
+    # Check for obvious failures in the log
+    if grep -q "Connection refused\|Host is down\|Operation timed out\|Permission denied\|Could not resolve hostname\|No route to host" "$ssh_log" 2>/dev/null; then
+      break
+    fi
+  done
+  
+  # If SSH is still running but we haven't confirmed connection, kill it
+  if kill -0 "$SSH_PID" 2>/dev/null && [[ "$connected" == "false" ]]; then
+    # Give it one more second for edge cases
+    sleep 1
+    if [[ -n "$REMOTE_CSV" ]]; then
+      first_port=$(echo "$REMOTE_CSV" | cut -d',' -f1 | cut -d'-' -f1)
+      if nc -z localhost "$first_port" 2>/dev/null; then
+        connected=true
+      fi
+    fi
+    
+    # If still not connected, kill the hanging process
+    if [[ "$connected" == "false" ]]; then
+      kill "$SSH_PID" 2>/dev/null || true
+      wait "$SSH_PID" 2>/dev/null || true
+      SSH_PID=""
+    fi
+  fi
+  
+  # Display error messages if connection failed
+  if [[ "$connected" == "false" ]] && [[ -s "$ssh_log" ]]; then
+    grep -E "ssh:|connect to host|Connection|Host|Operation timed out" "$ssh_log" 2>/dev/null | tail -1
+  fi
+  rm -f "$ssh_log" 2>/dev/null
+  
+  if [[ "$connected" == "true" ]] && [[ -n "$SSH_PID" ]] && kill -0 "$SSH_PID" 2>/dev/null; then
+    echo "✅ SSH tunnel established successfully (PID: $SSH_PID)"
+    echo "🎯 Press Ctrl+C to terminate the tunnel"
+    # echo "📝 To find this process later: ps aux | grep $SSH_PID"
+    # echo "🛑 To kill this process: kill $SSH_PID"
+    
+    # monitor the tunnel
+    while kill -0 "$SSH_PID" 2>/dev/null; do
+      sleep 1
+    done
+    
+    # if we get here, the tunnel died
+    wait "$SSH_PID" 2>/dev/null || tunnel_exit=$?
+    echo "⚠️  SSH tunnel terminated unexpectedly"
+    handle_ssh_error "${tunnel_exit:-1}"
+    
+    if (( attempt <= RETRIES )); then
+      echo "🔄 Attempting to reconnect..."
+      SSH_PID=""
+      (( attempt++ ))
+      continue
+    else
+      echo "❌ Maximum retries exceeded"
+      exit 1
+    fi
+  else
+    # tunnel failed to start
+    wait "$SSH_PID" 2>/dev/null || tunnel_exit=$?
+    handle_ssh_error "${tunnel_exit:-1}"
+    SSH_PID=""
+    
+    if (( attempt <= RETRIES )); then
+      (( attempt++ ))
+      continue
+    else
+      echo "❌ Failed to establish SSH tunnel after $(( RETRIES + 1 )) attempts"
+      exit 1
+    fi
+  fi
+done
