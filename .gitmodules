@@ -1,0 +1,6 @@
+[submodule "tools/ts-flatten"]
+	path = tools/ts-flatten
+	url = git@github.com:ashrhmn/ts-flatten.git
+[submodule "tools/tsndexer"]
+	path = tools/tsndexer
+	url = git@github.com:ashrhmn/tsndexer.git
