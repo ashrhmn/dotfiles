@@ -1,4 +1,11 @@
--- Setup Lazy Package Manager
+if vim.g.vscode then
+	-- VSCode extension
+	require("vsc.options")
+	require("vsc.keymaps")
+	require("vsc.plugins")
+else
+	-- ordinary Neovim
+	-- Setup Lazy Package Manager
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
 	vim.fn.system({
@@ -20,3 +27,4 @@ require("keymaps")
 
 -- Setup Lazy Plugins
 require("lazy").setup("plugins", { change_detection = { notify = false } })
+end

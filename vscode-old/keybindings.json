@@ -1,0 +1,42 @@
+// Place your key bindings in this file to override the defaults
+[
+  {
+    "key": "cmd+shift+]",
+    "command": "workbench.action.showNextWindowTab"
+  },
+  {
+    "key": "cmd+shift+[",
+    "command": "workbench.action.showPreviousWindowTab"
+  },
+  {
+    "key": "cmd+shift+=",
+    "command": "workbench.action.newWindowTab"
+  },
+  {
+    "key": "cmd+shift+-",
+    "command": "workbench.action.closeWindow"
+  },
+  {
+    "key": "cmd+shift+\\",
+    "command": "workbench.action.mergeAllWindowTabs"
+  },
+  {
+    "key": "cmd+n",
+    "command": "explorer.newFile",
+    "when": "explorerViewletFocus"
+  },
+  {
+    "key": "cmd+n",
+    "command": "-workbench.action.files.newUntitledFile"
+  },
+  {
+    "key": "cmd+n shift+'",
+    "command": "extension.selectDoubleQuote",
+    "when": "editorFocus"
+  },
+  {
+    "key": "cmd+k shift+'",
+    "command": "-extension.selectDoubleQuote",
+    "when": "editorFocus"
+  }
+]
