@@ -1,11 +1,11 @@
 .PHONY: all clean install bash-tools go-tools submodules update-submodules
 
 # Directories
-BIN_DIR := ../bin/.bin
-BASH_DIR := bash
+BIN_DIR := bin/.bin
+BASH_DIR := tools/bash
 
 # Go projects (as git submodules)
-GO_PROJECTS := ts-flatten tsndexer
+GO_PROJECTS := tools/ts-flatten tools/tsndexer
 
 all: bash-tools go-tools
 
@@ -35,37 +35,39 @@ go-tools: update-submodules
 	@echo "🔧 Building Go tools..."
 	@mkdir -p $(BIN_DIR)
 	@for project in $(GO_PROJECTS); do \
+		project_name=$$(basename "$$project"); \
 		if [ -d "$$project" ] && [ -f "$$project/go.mod" ]; then \
-			echo "  🔨 Building $$project..."; \
+			echo "  🔨 Building $$project_name..."; \
 			cd "$$project" && \
-			if go build -ldflags="-s -w" -o "../$(BIN_DIR)/$$project" . 2>/dev/null; then \
-				echo "  ✅ $$project"; \
+			if go build -ldflags="-s -w" -o "../../$(BIN_DIR)/$$project_name" . 2>/dev/null; then \
+				echo "  ✅ $$project_name"; \
 			else \
-				echo "  ❌ Failed to build $$project"; \
+				echo "  ❌ Failed to build $$project_name"; \
 			fi && \
-			cd ..; \
+			cd ../..; \
 		elif [ -d "$$project" ]; then \
-			echo "  ⚠️  $$project exists but no go.mod found - skipping"; \
+			echo "  ⚠️  $$project_name exists but no go.mod found - skipping"; \
 		else \
-			echo "  ⚠️  $$project submodule not found - run 'git submodule update --init'"; \
+			echo "  ⚠️  $$project_name submodule not found - run 'git submodule update --init'"; \
 		fi \
 	done
 
 # Build specific Go project
 build-%:
-	@project=$(subst build-,,$@); \
+	@project_name=$(subst build-,,$@); \
+	project="tools/$$project_name"; \
 	if [ -d "$$project" ] && [ -f "$$project/go.mod" ]; then \
-		echo "🔨 Building $$project..."; \
+		echo "🔨 Building $$project_name..."; \
 		mkdir -p $(BIN_DIR); \
 		cd "$$project" && \
-		if go build -ldflags="-s -w" -o "../$(BIN_DIR)/$$project" .; then \
-			echo "✅ $$project built successfully"; \
+		if go build -ldflags="-s -w" -o "../../$(BIN_DIR)/$$project_name" .; then \
+			echo "✅ $$project_name built successfully"; \
 		else \
-			echo "❌ Failed to build $$project"; \
+			echo "❌ Failed to build $$project_name"; \
 			exit 1; \
 		fi; \
 	else \
-		echo "❌ Project $$project not found or missing go.mod"; \
+		echo "❌ Project $$project_name not found or missing go.mod"; \
 		exit 1; \
 	fi
 
@@ -73,12 +75,13 @@ build-%:
 dev-go:
 	@echo "🧪 Running Go development tasks..."
 	@for project in $(GO_PROJECTS); do \
+		project_name=$$(basename "$$project"); \
 		if [ -d "$$project" ] && [ -f "$$project/go.mod" ]; then \
-			echo "  📦 $$project: tidying and testing..."; \
+			echo "  📦 $$project_name: tidying and testing..."; \
 			cd "$$project" && \
 			go mod tidy && \
 			go test ./... && \
-			cd ..; \
+			cd ../..; \
 		fi \
 	done
 
@@ -117,14 +120,15 @@ show:
 	fi
 	@echo "  🔧 Go tools:"
 	@for project in $(GO_PROJECTS); do \
+		project_name=$$(basename "$$project"); \
 		if [ -d "$$project" ]; then \
 			if [ -f "$$project/go.mod" ]; then \
-				echo "    ✅ $$project (ready)"; \
+				echo "    ✅ $$project_name (ready)"; \
 			else \
-				echo "    ⚠️  $$project (no go.mod)"; \
+				echo "    ⚠️  $$project_name (no go.mod)"; \
 			fi; \
 		else \
-			echo "    ❌ $$project (submodule not initialized)"; \
+			echo "    ❌ $$project_name (submodule not initialized)"; \
 		fi \
 	done
 
