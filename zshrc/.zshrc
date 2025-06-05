@@ -162,6 +162,12 @@ alias e="exit"
 alias t="tmux"
 alias ta="tmux attach || tmux"
 alias cat="bat"
+alias l="eza -l --group-directories-first --icons --color=always"
+alias ls="eza --group-directories-first --icons --color=always"
+alias ll="eza -l --group-directories-first --icons --color=always"
+alias la="eza -la --group-directories-first --icons --color=always"
+alias laa="eza -la --group-directories-first --icons --color=always --absolute"
+alias lag="eza -la --group-directories-first --icons --color=always --git --git-repos-no-status"
 
 function pmgen(){
   echo "module.exports = { apps: [{ name: '$1', script: '${@:2}', time: true, out_file: './app.log', error_file: './err.log' }] };">ecosystem.config.cjs;
