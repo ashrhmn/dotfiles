@@ -34,7 +34,7 @@ keymap.set("n", "<C-q>", ":qa<CR>", { desc = "Close Current Buffer" })
 keymap.set("n", "<leader>q", ":bd<CR>", { desc = "Close Current Buffer" })
 keymap.set("n","<leader>rl",":e %<CR>", { desc = "Reload Current Buffer" }) -- reload current buffer
 
-keymap.set("i", "jk", "<ESC>", { desc = "Exit insert mode with jk" })
+-- keymap.set("i", "jk", "<ESC>", { desc = "Exit insert mode with jk" })
 
 keymap.set("n", "<leader>nh", ":nohl<CR>", { desc = "Clear search highlights" })
 
