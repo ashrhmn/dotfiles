@@ -3,10 +3,10 @@ vim.g.mapleader = " "
 local keymap = vim.keymap -- for conciseness
 
 -- Navigate vim panes better
-keymap.set("n", "<c-k>", ":wincmd k<CR>")
-keymap.set("n", "<c-j>", ":wincmd j<CR>")
-keymap.set("n", "<c-h>", ":wincmd h<CR>")
-keymap.set("n", "<c-l>", ":wincmd l<CR>")
+keymap.set("n", "<c-k>", ":wincmd k<CR>", { desc = "Move to window above" })
+keymap.set("n", "<c-j>", ":wincmd j<CR>", { desc = "Move to window below" })
+keymap.set("n", "<c-h>", ":wincmd h<CR>", { desc = "Move to window left" })
+keymap.set("n", "<c-l>", ":wincmd l<CR>", { desc = "Move to window right" })
 
 -- local formatAndSave = function()
 --   vim.lsp.buf.format()
@@ -26,13 +26,13 @@ end
 keymap.set("n", "<leader>hi", toggleInlayHints, { desc = "Toggle inlay hints" })
 
 --keymap.set('n', '<C-q>', ':qa<CR>',{desc='Quit All'})
-keymap.set("n", "<C-s>", ":w<CR>", { desc = "Save File" })
-keymap.set("n", "<leader>w", ":w<CR>", { desc = "Save File" })
+keymap.set("n", "<C-s>", ":w<CR>", { desc = "Save file" })
+keymap.set("n", "<leader>w", ":w<CR>", { desc = "Save file" })
 -- keymap.set("n", "<C-s>", formatAndSave, { desc = "Format and Save File" })
 -- keymap.set("n", "<leader>w", formatAndSave, { desc = "Format and Save File" })
-keymap.set("n", "<C-q>", ":qa<CR>", { desc = "Close Current Buffer" })
-keymap.set("n", "<leader>q", ":bd<CR>", { desc = "Close Current Buffer" })
-keymap.set("n","<leader>rl",":e %<CR>", { desc = "Reload Current Buffer" }) -- reload current buffer
+keymap.set("n", "<C-q>", ":qa<CR>", { desc = "Quit all buffers" })
+keymap.set("n", "<leader>q", ":bd<CR>", { desc = "Close current buffer" })
+keymap.set("n","<leader>rl",":e %<CR>", { desc = "Reload current buffer" }) -- reload current buffer
 
 -- keymap.set("i", "jk", "<ESC>", { desc = "Exit insert mode with jk" })
 
@@ -54,5 +54,6 @@ keymap.set("n", "<leader>tn", "<cmd>tabn<CR>", { desc = "Go to next tab" }) --  
 keymap.set("n", "<leader>tp", "<cmd>tabp<CR>", { desc = "Go to previous tab" }) --  go to previous tab
 keymap.set("n", "<leader>tf", "<cmd>tabnew %<CR>", { desc = "Open current buffer in new tab" }) --  move current buffer to new tab
 
+-- terminal mode escape mapping
 -- keymap.set("t", "<leader><ESC>", "<C-\\><C-n>", { noremap = true })
-keymap.set("t", "<ESC>", "<C-\\><C-n>", { noremap = true })
+keymap.set("t", "<ESC>", "<C-\\><C-n>", { noremap = true, desc = "Exit terminal mode" })

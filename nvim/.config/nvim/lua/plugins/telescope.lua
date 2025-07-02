@@ -10,7 +10,7 @@ return {
 			keymap.set("n", "<leader>fr", builtin.oldfiles, { desc = "Find Recent Files" })
 			keymap.set("n", "<leader>fg", builtin.live_grep, { desc = "Find Files with Live Grep" })
 			keymap.set("n", "<leader>fb", builtin.buffers, { desc = "Find Buffers" })
-			keymap.set("n", "<leader>fh", builtin.help_tags, {})
+			keymap.set("n", "<leader>fh", builtin.help_tags, { desc = "Find Help Tags" })
 			keymap.set("n", "<leader>ft", "<cmd>TodoTelescope<cr>", { desc = "Find todos" })
 
 			require("telescope").setup({

@@ -297,6 +297,6 @@ return {
         },
       },
     })
-    vim.keymap.set("n", "<leader>e", ":Neotree filesystem reveal float<CR>", {})
+    vim.keymap.set("n", "<leader>e", ":Neotree filesystem reveal float<CR>", { desc = "Toggle file explorer" })
   end,
 }
