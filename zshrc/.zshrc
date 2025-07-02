@@ -249,3 +249,5 @@ autoload -Uz compinit && compinit -i
 
 # Created by `pipx` on 2025-06-27 20:35:05
 export PATH="$PATH:/Users/ash/.local/bin"
+
+alias claude="/Users/ash/.claude/local/claude"
