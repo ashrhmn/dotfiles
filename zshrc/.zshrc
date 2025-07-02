@@ -246,3 +246,6 @@ autoload -Uz compinit && compinit -i
 
 [[ ":$PATH:" != *":$HOME/.bin:"* ]] && PATH="$HOME/.bin:$PATH"
 
+
+# Created by `pipx` on 2025-06-27 20:35:05
+export PATH="$PATH:/Users/ash/.local/bin"
