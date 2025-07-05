@@ -87,7 +87,12 @@ plugins=(
 )
 
 source $ZSH/oh-my-zsh.sh
-source $HOME/.secrets.sh
+
+safe_source() {
+    [[ -f "$1" ]] && source "$1"
+}
+
+safe_source "$HOME/.secrets.sh"
 
 # User configuration
 
