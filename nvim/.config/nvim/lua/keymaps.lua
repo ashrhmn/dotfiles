@@ -32,7 +32,7 @@ keymap.set("n", "<leader>w", ":w<CR>", { desc = "Save file" })
 -- keymap.set("n", "<leader>w", formatAndSave, { desc = "Format and Save File" })
 keymap.set("n", "<C-q>", ":qa<CR>", { desc = "Quit all buffers" })
 keymap.set("n", "<leader>q", ":bd<CR>", { desc = "Close current buffer" })
-keymap.set("n","<leader>rl",":e %<CR>", { desc = "Reload current buffer" }) -- reload current buffer
+keymap.set("n", "<leader>rl", ":e %<CR>", { desc = "Reload current buffer" }) -- reload current buffer
 
 -- keymap.set("i", "jk", "<ESC>", { desc = "Exit insert mode with jk" })
 
