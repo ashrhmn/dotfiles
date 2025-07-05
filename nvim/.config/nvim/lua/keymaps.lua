@@ -56,4 +56,61 @@ keymap.set("n", "<leader>tf", "<cmd>tabnew %<CR>", { desc = "Open current buffer
 
 -- terminal mode escape mapping
 -- keymap.set("t", "<leader><ESC>", "<C-\\><C-n>", { noremap = true })
-keymap.set("t", "<ESC>", "<C-\\><C-n>", { noremap = true, desc = "Exit terminal mode" })
+-- keymap.set("t", "<ESC>", "<C-\\><C-n>", { noremap = true, desc = "Exit terminal mode" })
+keymap.set("t", "<M-ESC>", "<C-\\><C-n>", { noremap = true, desc = "Exit terminal mode" })
+
+-- Update clipboard
+vim.api.nvim_create_user_command("SyncClipboard", function()
+  -- Calculate 80% of editor dimensions
+  local width = math.floor(vim.o.columns * 0.8)
+  local height = math.floor(vim.o.lines * 0.8)
+  local row = math.floor((vim.o.lines - height) / 2)
+  local col = math.floor((vim.o.columns - width) / 2)
+  -- Create a temporary buffer
+  local buf = vim.api.nvim_create_buf(false, true)
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    style = "minimal",
+    border = "rounded",
+    title = "Sync Clipboard (Cmd+V then Ctrl+s)",
+  })
+  -- Set buffer options
+  vim.bo[buf].buftype = "nofile"
+  vim.wo[win].wrap = false
+  -- Enter insert mode
+  vim.cmd("startinsert")
+  -- Custom sync keymap for this buffer only
+  vim.keymap.set("i", "<C-s>", function()
+    -- Get the content from the buffer
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local content = table.concat(lines, "\n")
+    -- Exit insert mode first
+    vim.cmd("stopinsert")
+    -- Close the window and buffer
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+    -- Set clipboard register if we got content
+    if content and content ~= "" then
+      vim.fn.setreg("+", content)
+      vim.fn.setreg("*", content)
+      vim.notify("Clipboard synced: " .. string.len(content) .. " characters", vim.log.levels.INFO)
+    else
+      vim.notify("No content pasted", vim.log.levels.WARN)
+    end
+  end, { buffer = buf, desc = "Sync clipboard content" })
+  -- Also allow normal ESC to just close without syncing
+  vim.keymap.set("i", "<ESC>", function()
+    vim.cmd("stopinsert")
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+    vim.notify("Clipboard sync cancelled", vim.log.levels.INFO)
+  end, { buffer = buf, desc = "Cancel clipboard sync" })
+end, { desc = "Sync clipboard from macOS" })
+-- Create a keymap
+vim.keymap.set("n", "<leader>sc", ":SyncClipboard<CR>", { desc = "Sync clipboard from macOS" })
