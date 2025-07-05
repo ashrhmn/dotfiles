@@ -1,0 +1,14 @@
+[alias]
+    clone-org = "!f() { \
+        url=\"$1\"; \
+        org_repo=$(echo \"$url\" | sed -E \"s|.*[:/]([^/]+/[^/]+).*|\\1|\" | sed \"s/\\.git$//\"); \
+        org=$(dirname \"$org_repo\"); \
+        mkdir -p \"$org\" && git clone \"$url\" \"$org_repo\" \"${@:2}\"; \
+        echo \"Cloned to: $org_repo\"; \
+    }; f"
+    
+    # Short alias
+    co = clone-org
+[user]
+	name = ashrhmn
+	email = ashik.se@proton.me
