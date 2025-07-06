@@ -133,8 +133,8 @@ return {
     ---@diagnostic disable-next-line missing-fields
     local pm2Logs = fterm:new({
       ft = "fterm_pm2Logs",
-      cmd = "pm2 logs",
-      -- cmd = "pm2logs",
+      -- cmd = "pm2 logs",
+      cmd = "pm2logs",
       ---@diagnostic disable-next-line missing-fields
       dimensions = {
         height = 0.95,
