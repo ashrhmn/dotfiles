@@ -4,3 +4,6 @@
 [submodule "tools/tsndexer"]
 	path = tools/tsndexer
 	url = git@github.com:ashrhmn/tsndexer.git
+[submodule "tools/lctx"]
+	path = tools/lctx
+	url = git@github.com:ashrhmn/lctx.git
