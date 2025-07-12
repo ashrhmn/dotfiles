@@ -258,6 +258,5 @@ autoload -Uz compinit && compinit -i
 export PATH="$PATH:/Users/ash/.local/bin"
 
 # alias claude="/Users/ash/.claude/local/claude"
-. "/home/ash/.deno/env"
+# . "/home/ash/.deno/env"
 
-alias claude="/home/ash/.claude/local/claude"

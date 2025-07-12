@@ -5,16 +5,26 @@ SCRIPT_NAME=$(basename "$0")
 
 usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [ssh options] [-P SSH_PORT] [-L REMOTE_CSV] [-R LOCAL_CSV] [--retry RETRIES] [--delay DELAY] [--find-processes] -- user@host [more ssh options]
+Usage: ${SCRIPT_NAME} [COMMAND] [OPTIONS] -- user@host [ssh options]
+
+Commands:
+  (default)           Establish SSH tunnel (attach mode)
+  ps                  List all SPF processes (running/stopped)
+  start NAME          Start a stopped process
+  stop NAME|ID        Stop a running process (preserves config)
+  rm NAME|ID          Remove a stopped process completely
+  kill                Kill all SPF connections
+  logs NAME|ID        Show logs for a process (use -f to follow)
 
 Options:
   -P SSH_PORT           SSH port on remote host (default: 22)
   -L REMOTE_CSV         Comma-separated ports or ranges to forward REMOTE→LOCAL
   -R LOCAL_CSV          Comma-separated ports or ranges to forward LOCAL→REMOTE
                           (At least one of -L or -R is required)
+  --name NAME           Name for this connection (runs in background if specified)
   --retry RETRIES       Number of connection retries on failure (default: 3)
   --delay DELAY         Delay in seconds between retries (default: 5)
-  --find-processes      Find and display running SSH port forwarding processes
+  -f                    Follow logs (for logs command only)
   --                    End of script options; the first arg after -- must be user@host,
                           the rest are passed to ssh
   -h, --help            Show this help and exit
@@ -29,25 +39,30 @@ Port Forwarding Types:
                            ℹ️  No local port conflict checking needed
 
 Examples:
-  # Forward remote 3000–3005 → your localhost:
+  # Forward remote 3000–3005 → your localhost (attached):
   ${SCRIPT_NAME} -L 3000-3005 -- ash@192.168.68.63
 
-  # Forward local 5432,6379 → remote:
-  ${SCRIPT_NAME} -R 5432,6379 -- ash@192.168.68.63
+  # Forward local 5432,6379 → remote (background with name):
+  ${SCRIPT_NAME} --name myapp -R 5432,6379 -- ash@192.168.68.63
 
-  # Do both, on SSH port 23, with retries and custom delay:
-  ${SCRIPT_NAME} -P 23 -L 3000-3005,5000-5003 -R 5432,6379 --retry 5 --delay 10 \\
-      -- ash@192.168.68.63 -i ~/.ssh/id_rsa -v
+  # List all processes:
+  ${SCRIPT_NAME} ps
 
-Process Management:
-  # Find running SSH tunnels:
-  ${SCRIPT_NAME} --find-processes
-  
-  # Kill specific tunnel:
-  kill <PID>
-  
-  # Kill all SSH tunnels:
-  pkill -f 'ssh.*-[LR]'
+  # Stop a process (preserves config):
+  ${SCRIPT_NAME} stop myapp
+
+  # Start a stopped process:
+  ${SCRIPT_NAME} start myapp
+
+  # View logs for a process:
+  ${SCRIPT_NAME} logs myapp
+  ${SCRIPT_NAME} logs myapp -f  # follow logs
+
+  # Remove a stopped process completely:
+  ${SCRIPT_NAME} rm myapp
+
+  # Kill all running SPF connections:
+  ${SCRIPT_NAME} kill
 EOF
 }
 
@@ -61,20 +76,57 @@ EXTRA_SSH=()
 RETRIES=3
 DELAY=5
 SSH_PID=""
+CONNECTION_NAME=""
+COMMAND=""
+FOLLOW_LOGS=false
+
+# SPF state directory
+SPF_DIR="$HOME/.spf"
+mkdir -p "$SPF_DIR"
+
+# helper to expand CSV with numeric ranges
+_expand_ports() {
+  local csv=$1
+  IFS=',' read -ra parts <<< "$csv"
+  for part in "${parts[@]}"; do
+    if [[ $part =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      local start=${BASH_REMATCH[1]}
+      local end=${BASH_REMATCH[2]}
+      if (( start > end )); then
+        echo "Invalid range: $part" >&2
+        exit 1
+      fi
+      for ((p = start; p <= end; p++)); do
+        echo "$p"
+      done
+    else
+      echo "$part"
+    fi
+  done
+}
 
 # cleanup function
 cleanup() {
   local exit_code=$?
   if [[ -n "$SSH_PID" ]] && kill -0 "$SSH_PID" 2>/dev/null; then
-    echo -e "\n⚠️  Cleaning up SSH tunnel (PID: $SSH_PID)..."
+    if [[ -z "$CONNECTION_NAME" ]]; then
+      echo -e "\n⚠️  Cleaning up SSH tunnel (PID: $SSH_PID)..."
+    fi
     kill "$SSH_PID" 2>/dev/null || true
     wait "$SSH_PID" 2>/dev/null || true
   fi
   
-  if [[ $exit_code -eq 0 ]]; then
-    echo "✅ SSH tunnel terminated cleanly"
-  else
-    echo "❌ SSH tunnel terminated with error (exit code: $exit_code)"
+  # Remove process info file if this was a named connection
+  if [[ -n "$CONNECTION_NAME" ]]; then
+    rm -f "$SPF_DIR/${CONNECTION_NAME}.json"
+  fi
+  
+  if [[ -z "$CONNECTION_NAME" ]]; then
+    if [[ $exit_code -eq 0 ]]; then
+      echo "✅ SSH tunnel terminated cleanly"
+    else
+      echo "❌ SSH tunnel terminated with error (exit code: $exit_code)"
+    fi
   fi
   exit $exit_code
 }
@@ -83,27 +135,306 @@ cleanup() {
 trap cleanup EXIT
 trap 'echo -e "\n🛑 Interrupted by user"; exit 130' INT TERM
 
-# find running SSH port forwarding processes
-find_ssh_processes() {
-  echo "🔍 Finding running SSH port forwarding processes..."
-  echo
+# SPF process management functions
+write_process_info() {
+  local name="$1"
+  local pid="$2"
+  local user="$3"
+  local host="$4"
+  local ssh_port="$5"
+  local remote_csv="$6"
+  local local_csv="$7"
+  local log_file="$8"
+  local status="$9"
+  
+  cat > "$SPF_DIR/${name}.json" <<EOF
+{
+  "name": "$name",
+  "pid": $pid,
+  "user": "$user",
+  "host": "$host",
+  "ssh_port": $ssh_port,
+  "remote_csv": "$remote_csv",
+  "local_csv": "$local_csv",
+  "log_file": "$log_file",
+  "status": "$status",
+  "created": "$(date -Iseconds)"
+}
+EOF
+}
+
+read_process_info() {
+  local name_or_pid="$1"
+  local file=""
+  
+  # Try by name first
+  if [[ -f "$SPF_DIR/${name_or_pid}.json" ]]; then
+    file="$SPF_DIR/${name_or_pid}.json"
+  else
+    # Try by PID
+    for f in "$SPF_DIR"/*.json; do
+      [[ -f "$f" ]] || continue
+      if grep -q "\"pid\": $name_or_pid" "$f" 2>/dev/null; then
+        file="$f"
+        break
+      fi
+    done
+  fi
+  
+  [[ -n "$file" ]] && cat "$file"
+}
+
+cleanup_dead_processes() {
+  for f in "$SPF_DIR"/*.json; do
+    [[ -f "$f" ]] || continue
+    local pid=$(grep '"pid"' "$f" | sed 's/.*: *\([0-9]*\).*/\1/')
+    local status=$(grep '"status"' "$f" | sed 's/.*": *"\([^"]*\)".*/\1/')
+    # Only remove processes that were running but are now dead
+    # Keep stopped processes (they should be explicitly removed with 'rm')
+    if [[ "$status" == "running" ]] && [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$f"
+    fi
+  done
+}
+
+list_processes() {
+  cleanup_dead_processes
+  echo "NAME       PID    STATUS   TARGET              FORWARDS"
+  echo "────────   ────   ──────   ─────────────────   ────────────────────────────────"
   
   local found=false
-  while IFS= read -r line; do
-    if [[ -n "$line" ]]; then
-      found=true
-      echo "📌 $line"
+  for f in "$SPF_DIR"/*.json; do
+    [[ -f "$f" ]] || continue
+    found=true
+    
+    local name=$(grep '"name"' "$f" | sed 's/.*": *"\([^"]*\)".*/\1/')
+    local pid=$(grep '"pid"' "$f" | sed 's/.*: *\([0-9]*\).*/\1/')
+    local user=$(grep '"user"' "$f" | sed 's/.*": *"\([^"]*\)".*/\1/')
+    local host=$(grep '"host"' "$f" | sed 's/.*": *"\([^"]*\)".*/\1/')
+    local ssh_port=$(grep '"ssh_port"' "$f" | sed 's/.*: *\([0-9]*\).*/\1/')
+    local remote_csv=$(grep '"remote_csv"' "$f" | sed 's/.*": *"\([^"]*\)".*/\1/')
+    local local_csv=$(grep '"local_csv"' "$f" | sed 's/.*": *"\([^"]*\)".*/\1/')
+    local saved_status=$(grep '"status"' "$f" | sed 's/.*": *"\([^"]*\)".*/\1/')
+    
+    local status="$saved_status"
+    # For running processes, verify they're actually running
+    if [[ "$saved_status" == "running" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      status="dead"
     fi
-  done < <(ps aux | grep '[s]sh.*-[LR]' | grep -v grep)
+    
+    local forwards=""
+    [[ -n "$remote_csv" ]] && forwards+="L:$remote_csv "
+    [[ -n "$local_csv" ]] && forwards+="R:$local_csv"
+    
+    # Show PID as "-" for stopped processes
+    local display_pid="$pid"
+    [[ "$status" == "stopped" ]] && display_pid="-"
+    
+    printf "%-10s %-6s %-8s %-19s %s\n" "$name" "$display_pid" "$status" "${user}@${host}:${ssh_port}" "$forwards"
+  done
   
   if [[ "$found" == "false" ]]; then
-    echo "✅ No SSH port forwarding processes found"
-  else
-    echo
-    echo "💡 To kill a specific process: kill <PID>"
-    echo "💡 To kill all SSH tunnels: pkill -f 'ssh.*-[LR]'"
+    echo "No SPF processes found"
   fi
-  echo
+}
+
+stop_process() {
+  local name_or_pid="$1"
+  local info=$(read_process_info "$name_or_pid")
+  
+  if [[ -z "$info" ]]; then
+    echo "❌ Process '$name_or_pid' not found"
+    exit 1
+  fi
+  
+  local name=$(echo "$info" | grep '"name"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local pid=$(echo "$info" | grep '"pid"' | sed 's/.*: *\([0-9]*\).*/\1/')
+  local status=$(echo "$info" | grep '"status"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  
+  if [[ "$status" == "stopped" ]]; then
+    echo "⚠️  Process '$name' is already stopped"
+    exit 1
+  fi
+  
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "🛑 Stopping process '$name' (PID: $pid)..."
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  fi
+  
+  # Update status to stopped but keep the config
+  local user=$(echo "$info" | grep '"user"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local host=$(echo "$info" | grep '"host"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local ssh_port=$(echo "$info" | grep '"ssh_port"' | sed 's/.*: *\([0-9]*\).*/\1/')
+  local remote_csv=$(echo "$info" | grep '"remote_csv"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local local_csv=$(echo "$info" | grep '"local_csv"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local log_file=$(echo "$info" | grep '"log_file"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  
+  write_process_info "$name" "0" "$user" "$host" "$ssh_port" "$remote_csv" "$local_csv" "$log_file" "stopped"
+  echo "✅ Process '$name' stopped (config preserved)"
+}
+
+start_process() {
+  local name="$1"
+  local info=$(read_process_info "$name")
+  
+  if [[ -z "$info" ]]; then
+    echo "❌ Process '$name' not found"
+    exit 1
+  fi
+  
+  local status=$(echo "$info" | grep '"status"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local pid=$(echo "$info" | grep '"pid"' | sed 's/.*: *\([0-9]*\).*/\1/')
+  
+  if [[ "$status" == "running" ]] && kill -0 "$pid" 2>/dev/null; then
+    echo "⚠️  Process '$name' is already running (PID: $pid)"
+    exit 1
+  fi
+  
+  # Extract saved configuration
+  local user=$(echo "$info" | grep '"user"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local host=$(echo "$info" | grep '"host"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local ssh_port=$(echo "$info" | grep '"ssh_port"' | sed 's/.*: *\([0-9]*\).*/\1/')
+  local remote_csv=$(echo "$info" | grep '"remote_csv"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local local_csv=$(echo "$info" | grep '"local_csv"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local log_file=$(echo "$info" | grep '"log_file"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  
+  echo "🚀 Starting process '$name' with saved configuration"
+  echo "📡 Target: $user@$host:$ssh_port"
+  
+  # Check for port conflicts
+  if [[ -n "$remote_csv" ]]; then
+    echo "🔍 Checking local port availability for remote→local forwards..."
+    local conflicts=()
+    while read -r port; do
+      if lsof -i ":$port" -sTCP:LISTEN >/dev/null 2>&1; then
+        conflicts+=("$port")
+      fi
+    done < <(_expand_ports "$remote_csv")
+    
+    if [[ ${#conflicts[@]} -gt 0 ]]; then
+      echo "⚠️  Warning: The following ports are already in use:"
+      printf "   %s\n" "${conflicts[@]}"
+      echo "   This may cause port forwarding conflicts."
+      echo -n "   Continue anyway? [y/N] "
+      read -r response
+      if [[ ! "$response" =~ ^[Yy]$ ]]; then
+        echo "❌ Aborted by user"
+        exit 1
+      fi
+    fi
+  fi
+  
+  # Build SSH command
+  local cmd=(ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=no -o LogLevel=ERROR -N -p "$ssh_port")
+  
+  # Add port forwards
+  if [[ -n "$remote_csv" ]]; then
+    while read -r port; do
+      cmd+=(-L "${port}:localhost:${port}")
+    done < <(_expand_ports "$remote_csv")
+  fi
+  
+  if [[ -n "$local_csv" ]]; then
+    while read -r port; do
+      cmd+=(-R "${port}:localhost:${port}")
+    done < <(_expand_ports "$local_csv")
+  fi
+  
+  cmd+=("${user}@${host}")
+  
+  # Start the process in background
+  echo "🔗 Establishing SSH tunnel..."
+  "${cmd[@]}" -o ConnectTimeout=8 >>"$log_file" 2>&1 &
+  local new_pid=$!
+  
+  # Wait a moment to see if it starts successfully
+  sleep 2
+  if kill -0 "$new_pid" 2>/dev/null; then
+    write_process_info "$name" "$new_pid" "$user" "$host" "$ssh_port" "$remote_csv" "$local_csv" "$log_file" "running"
+    echo "✅ Process '$name' started successfully (PID: $new_pid)"
+  else
+    echo "❌ Failed to start process '$name'"
+    exit 1
+  fi
+}
+
+remove_process() {
+  local name_or_pid="$1"
+  local info=$(read_process_info "$name_or_pid")
+  
+  if [[ -z "$info" ]]; then
+    echo "❌ Process '$name_or_pid' not found"
+    exit 1
+  fi
+  
+  local name=$(echo "$info" | grep '"name"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local pid=$(echo "$info" | grep '"pid"' | sed 's/.*: *\([0-9]*\).*/\1/')
+  local status=$(echo "$info" | grep '"status"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  
+  if [[ "$status" == "running" ]] && kill -0 "$pid" 2>/dev/null; then
+    echo "❌ Cannot remove running process '$name'. Stop it first with: spf stop $name"
+    exit 1
+  fi
+  
+  rm -f "$SPF_DIR/${name}.json"
+  local log_file=$(echo "$info" | grep '"log_file"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  [[ -f "$log_file" ]] && rm -f "$log_file"
+  echo "✅ Process '$name' removed completely"
+}
+
+kill_all_processes() {
+  cleanup_dead_processes
+  local found=false
+  
+  for f in "$SPF_DIR"/*.json; do
+    [[ -f "$f" ]] || continue
+    found=true
+    
+    local name=$(grep '"name"' "$f" | sed 's/.*": *"\([^"]*\)".*/\1/')
+    local pid=$(grep '"pid"' "$f" | sed 's/.*: *\([0-9]*\).*/\1/')
+    
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "🛑 Stopping '$name' (PID: $pid)..."
+      kill "$pid" 2>/dev/null || true
+    fi
+    
+    rm -f "$f"
+  done
+  
+  if [[ "$found" == "true" ]]; then
+    echo "✅ All SPF processes stopped"
+  else
+    echo "No SPF processes found"
+  fi
+}
+
+show_logs() {
+  local name_or_pid="$1"
+  local follow="$2"
+  local info=$(read_process_info "$name_or_pid")
+  
+  if [[ -z "$info" ]]; then
+    echo "❌ Process '$name_or_pid' not found"
+    exit 1
+  fi
+  
+  local name=$(echo "$info" | grep '"name"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  local log_file=$(echo "$info" | grep '"log_file"' | sed 's/.*": *"\([^"]*\)".*/\1/')
+  
+  if [[ ! -f "$log_file" ]]; then
+    echo "❌ Log file not found for process '$name'"
+    exit 1
+  fi
+  
+  if [[ "$follow" == "true" ]]; then
+    tail -f "$log_file"
+  else
+    cat "$log_file"
+  fi
 }
 
 # error handling function
@@ -183,15 +514,80 @@ test_ssh_connection() {
   fi
 }
 
+# parse command
+if [[ $# -gt 0 ]] && [[ "$1" != "-"* ]]; then
+  case "$1" in
+    ps) 
+      trap - EXIT INT TERM  # Remove cleanup trap for command-only operations
+      list_processes
+      exit 0
+      ;;
+    start) 
+      trap - EXIT INT TERM  # Remove cleanup trap for command-only operations
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: 'start' command requires a process name" >&2
+        exit 1
+      fi
+      start_process "$1"
+      exit 0
+      ;;
+    stop) 
+      trap - EXIT INT TERM  # Remove cleanup trap for command-only operations
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: 'stop' command requires a process name or PID" >&2
+        exit 1
+      fi
+      stop_process "$1"
+      exit 0
+      ;;
+    rm) 
+      trap - EXIT INT TERM  # Remove cleanup trap for command-only operations
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: 'rm' command requires a process name or PID" >&2
+        exit 1
+      fi
+      remove_process "$1"
+      exit 0
+      ;;
+    kill) 
+      trap - EXIT INT TERM  # Remove cleanup trap for command-only operations
+      kill_all_processes
+      exit 0
+      ;;
+    logs) 
+      trap - EXIT INT TERM  # Remove cleanup trap for command-only operations
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: 'logs' command requires a process name or PID" >&2
+        exit 1
+      fi
+      target="$1"
+      shift
+      follow=false
+      [[ $# -gt 0 && "$1" == "-f" ]] && follow=true
+      show_logs "$target" "$follow"
+      exit 0
+      ;;
+    *) 
+      COMMAND="$1"
+      shift
+      ;;
+  esac
+fi
+
 # parse flags
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -P) SSH_PORT="$2"; shift 2;;
     -L) REMOTE_CSV="$2"; shift 2;;
     -R) LOCAL_CSV="$2"; shift 2;;
+    --name) CONNECTION_NAME="$2"; shift 2;;
     --retry) RETRIES="$2"; shift 2;;
     --delay) DELAY="$2"; shift 2;;
-    --find-processes) find_ssh_processes; exit 0;;
+    -f) FOLLOW_LOGS=true; shift;;
     --) shift; EXTRA_SSH=("$@"); break;;
     -h|--help) usage; exit 0;;
     *)  echo "Unknown option: $1" >&2; usage; exit 1;;
@@ -222,6 +618,25 @@ if [[ -z "$REMOTE_CSV" && -z "$LOCAL_CSV" ]]; then
   exit 1
 fi
 
+# validate connection name
+if [[ -n "$CONNECTION_NAME" ]]; then
+  if [[ ! "$CONNECTION_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "Error: connection name must contain only alphanumeric characters, hyphens, and underscores" >&2
+    exit 1
+  fi
+  
+  if [[ -f "$SPF_DIR/${CONNECTION_NAME}.json" ]]; then
+    local existing_pid=$(grep '"pid"' "$SPF_DIR/${CONNECTION_NAME}.json" | sed 's/.*: *\([0-9]*\).*/\1/')
+    if kill -0 "$existing_pid" 2>/dev/null; then
+      echo "Error: connection named '$CONNECTION_NAME' is already running (PID: $existing_pid)" >&2
+      exit 1
+    else
+      # Clean up stale process file
+      rm -f "$SPF_DIR/${CONNECTION_NAME}.json"
+    fi
+  fi
+fi
+
 # validate numeric arguments
 if ! [[ "$RETRIES" =~ ^[0-9]+$ ]] || (( RETRIES < 0 )); then
   echo "Error: --retry must be a non-negative number" >&2
@@ -233,26 +648,6 @@ if ! [[ "$DELAY" =~ ^[0-9]+$ ]] || (( DELAY < 0 )); then
   exit 1
 fi
 
-# helper to expand CSV with numeric ranges
-_expand_ports() {
-  local csv=$1
-  IFS=',' read -ra parts <<< "$csv"
-  for part in "${parts[@]}"; do
-    if [[ $part =~ ^([0-9]+)-([0-9]+)$ ]]; then
-      local start=${BASH_REMATCH[1]}
-      local end=${BASH_REMATCH[2]}
-      if (( start > end )); then
-        echo "Invalid range: $part" >&2
-        exit 1
-      fi
-      for ((p = start; p <= end; p++)); do
-        echo "$p"
-      done
-    else
-      echo "$part"
-    fi
-  done
-}
 
 # helper to format port ranges for summary
 _format_port_summary() {
@@ -263,8 +658,13 @@ _format_port_summary() {
   done
 }
 
-echo "🚀 Starting SSH Port Forwarder"
-echo "📡 Target: $USER@$HOST:$SSH_PORT"
+if [[ -z "$CONNECTION_NAME" ]]; then
+  echo "🚀 Starting SSH Port Forwarder"
+  echo "📡 Target: $USER@$HOST:$SSH_PORT"
+else
+  echo "🚀 Starting SSH Port Forwarder '$CONNECTION_NAME' in background"
+  echo "📡 Target: $USER@$HOST:$SSH_PORT"
+fi
 
 # check for port conflicts
 check_local_ports
@@ -312,6 +712,13 @@ fi
 # target
 cmd+=( "${USER}@${HOST}" )
 
+# setup logging
+if [[ -n "$CONNECTION_NAME" ]]; then
+  LOG_FILE="$SPF_DIR/${CONNECTION_NAME}.log"
+  exec > >(tee -a "$LOG_FILE")
+  exec 2>&1
+fi
+
 # connection loop with retries
 attempt=1
 while (( attempt <= RETRIES + 1 )); do
@@ -324,7 +731,12 @@ while (( attempt <= RETRIES + 1 )); do
   
   # start SSH tunnel with shorter timeout
   ssh_log=$(mktemp)
-  "${cmd[@]}" -o ConnectTimeout=8 2>"$ssh_log" &
+  if [[ -n "$CONNECTION_NAME" ]]; then
+    # For named connections, log to the connection's log file
+    "${cmd[@]}" -o ConnectTimeout=8 2>>"$LOG_FILE" &
+  else
+    "${cmd[@]}" -o ConnectTimeout=8 2>"$ssh_log" &
+  fi
   SSH_PID=$!
   
   # wait for initial connection attempt
@@ -379,11 +791,22 @@ while (( attempt <= RETRIES + 1 )); do
   
   if [[ "$connected" == "true" ]] && [[ -n "$SSH_PID" ]] && kill -0 "$SSH_PID" 2>/dev/null; then
     echo "✅ SSH tunnel established successfully (PID: $SSH_PID)"
-    echo "🎯 Press Ctrl+C to terminate the tunnel"
-    # echo "📝 To find this process later: ps aux | grep $SSH_PID"
-    # echo "🛑 To kill this process: kill $SSH_PID"
     
-    # monitor the tunnel
+    # Write process info for named connections
+    if [[ -n "$CONNECTION_NAME" ]]; then
+      write_process_info "$CONNECTION_NAME" "$SSH_PID" "$USER" "$HOST" "$SSH_PORT" "$REMOTE_CSV" "$LOCAL_CSV" "$LOG_FILE" "running"
+      echo "📁 Process saved as '$CONNECTION_NAME'"
+      echo "📝 View logs: spf logs $CONNECTION_NAME"
+      echo "🛑 Stop process: spf rm $CONNECTION_NAME"
+      
+      # For named connections, run in background and exit
+      trap - EXIT INT TERM  # Remove traps to avoid cleanup on exit
+      exit 0
+    else
+      echo "🎯 Press Ctrl+C to terminate the tunnel"
+    fi
+    
+    # monitor the tunnel (only for unnamed/attached connections)
     while kill -0 "$SSH_PID" 2>/dev/null; do
       sleep 1
     done
