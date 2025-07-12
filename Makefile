@@ -21,9 +21,14 @@ bash-tools:
 	@if [ -d "$(BASH_DIR)" ]; then \
 		for script in $(BASH_DIR)/*; do \
 			if [ -f "$$script" ]; then \
-				cp "$$script" $(BIN_DIR)/ && \
-				chmod +x $(BIN_DIR)/$$(basename $$script) && \
-				echo "  ✅ $$(basename $$script)"; \
+				script_name=$$(basename "$$script"); \
+				if [ "$$script_name" = "pbcopy" ] && [ "$$(uname)" = "Darwin" ]; then \
+					echo "  ⏭️  Skipping $$script_name on Darwin/macOS"; \
+				else \
+					cp "$$script" $(BIN_DIR)/ && \
+					chmod +x $(BIN_DIR)/$$script_name && \
+					echo "  ✅ $$script_name"; \
+				fi; \
 			fi \
 		done; \
 	else \
