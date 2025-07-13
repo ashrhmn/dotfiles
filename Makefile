@@ -4,8 +4,12 @@
 BIN_DIR := bin/.bin
 BASH_DIR := tools/bash
 
+# Platform-specific tools to ignore during build
+DARWIN_IGNORE := pbcopy xdg-open
+LINUX_IGNORE :=
+
 # Go projects (as git submodules)
-GO_PROJECTS := tools/ts-flatten tools/tsndexer
+GO_PROJECTS := tools/ts-flatten tools/tsndexer tools/lctx
 
 all: bash-tools go-tools
 
@@ -22,9 +26,25 @@ bash-tools:
 		for script in $(BASH_DIR)/*; do \
 			if [ -f "$$script" ]; then \
 				script_name=$$(basename "$$script"); \
-				if [ "$$script_name" = "pbcopy" ] && [ "$$(uname)" = "Darwin" ]; then \
-					echo "  ⏭️  Skipping $$script_name on Darwin/macOS"; \
-				else \
+				skip_script=false; \
+				if [ "$$(uname)" = "Darwin" ]; then \
+					for ignore in $(DARWIN_IGNORE); do \
+						if [ "$$script_name" = "$$ignore" ]; then \
+							skip_script=true; \
+							echo "  ⏭️  Skipping $$script_name on Darwin/macOS"; \
+							break; \
+						fi; \
+					done; \
+				elif [ "$$(uname)" = "Linux" ]; then \
+					for ignore in $(LINUX_IGNORE); do \
+						if [ "$$script_name" = "$$ignore" ]; then \
+							skip_script=true; \
+							echo "  ⏭️  Skipping $$script_name on Linux"; \
+							break; \
+						fi; \
+					done; \
+				fi; \
+				if [ "$$skip_script" = "false" ]; then \
 					cp "$$script" $(BIN_DIR)/ && \
 					chmod +x $(BIN_DIR)/$$script_name && \
 					echo "  ✅ $$script_name"; \

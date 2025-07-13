@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Check if we're in an SSH session and the argument looks like a URL
+if [[ -n "$SSH_CLIENT" ]] && [[ "$1" =~ ^https?:// ]]; then
+    # We're in SSH session and it's a URL, send to pbcopy
+    echo "$1" | pbcopy
+else
+    # Either not in SSH or not a URL, use real xdg-open
+    /usr/bin/xdg-open "$@"
+fi
