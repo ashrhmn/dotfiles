@@ -148,6 +148,22 @@ return {
     vim.keymap.set({ "n", "t" }, "<C-p>", togglePm2Logs, { noremap = true, silent = true, desc = "PM Logs" })
 
     ---@diagnostic disable-next-line missing-fields
+    local claudeTerm = fterm:new({
+      ft = "fterm_claude",
+      cmd = "claude --dangerously-skip-permissions",
+      ---@diagnostic disable-next-line missing-fields
+      dimensions = {
+        height = 0.95,
+        width = 0.95,
+      },
+    })
+    local toggleClaude = function()
+      claudeTerm:toggle()
+    end
+    vim.api.nvim_create_user_command("Claude", toggleClaude, { bang = true })
+    vim.keymap.set({ "n", "t" }, "<C-g>", toggleClaude, { noremap = true, silent = true, desc = "Claude" })
+
+    ---@diagnostic disable-next-line missing-fields
     local pmStartTerm = fterm:new({
       ft = "fterm_pmStart",
       cmd = "pm2 start ecosystem.config.cjs",
