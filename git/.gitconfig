@@ -9,10 +9,15 @@
     
     # AI-generated commit message with editor
     aicommit = "!f() { \
-        temp_file=$(mktemp); \
-        gemini -m \"gemini-2.5-flash\" -y -a -p \"Analyze the staged git changes using 'git diff --staged' and recent commit history with 'git log --oneline -10' to understand the codebase patterns. Generate a commit message following these guidelines:\n\n1. Use conventional commit format: type(scope): description\n2. Types: feat, fix, refactor, docs, style, test, chore, perf, ci\n3. Subject line: imperative mood, 50 chars max, no period\n4. If changes are complex, add a body explaining WHY and WHAT\n5. Focus on business logic and functionality, not just file changes\n6. Group related changes in bullet points if needed\n7. Match the style and tone of recent commits\n\nAnalyze what the code changes accomplish rather than just listing modified files.\" > \"$temp_file\"; \
-        git commit -e -F \"$temp_file\"; \
-        rm \"$temp_file\"; \
+        if ! git diff --staged --quiet; then \
+            temp_file=$(mktemp); \
+            gemini -m \"gemini-2.5-flash\" -y -a -p \"You are a git commit message generator. Analyze the staged git changes using 'git diff --staged' and recent commit history with 'git log --oneline -10' to understand the codebase patterns. Generate ONLY the commit message following these guidelines:\n\n1. Use conventional commit format: type(scope): description\n2. Types: feat, fix, refactor, docs, style, test, chore, perf, ci\n3. Subject line: imperative mood, 50 chars max, no period\n4. If changes are complex, add a body explaining WHY and WHAT\n5. Focus on business logic and functionality, not just file changes\n6. Group related changes in bullet points if needed\n7. Match the style and tone of recent commits\n\nIMPORTANT: Return ONLY the commit message. Do not include any prefix like 'Here is your commit message:' or wrap it in backticks. Just return the raw commit message text.\" > \"$temp_file\"; \
+            git commit -e -F \"$temp_file\"; \
+            rm \"$temp_file\"; \
+        else \
+            echo \"Error: No staged changes to commit. Use 'git add' to stage changes first.\"; \
+            exit 1; \
+        fi; \
     }; f"
     
     # Short aliases
