@@ -4,8 +4,24 @@ return {
   name = "catppuccin",
   priority = 1000,
   config = function()
+    -- Get flavour from environment variable, default to mocha if not set or invalid
+    local flavour = os.getenv("CATPPUCCIN_FLAVOUR") or "mocha"
+    local valid_flavours = {"latte", "frappe", "macchiato", "mocha"}
+    local is_valid = false
+    
+    for _, valid in ipairs(valid_flavours) do
+      if flavour == valid then
+        is_valid = true
+        break
+      end
+    end
+    
+    if not is_valid then
+      flavour = "mocha"  -- fallback to mocha
+    end
+    
     require("catppuccin").setup({
-      flavour = "macchiato", -- latte, frappe, macchiato, mocha
+      flavour = flavour, -- latte, frappe, macchiato, mocha
       background = { -- :h background
         light = "latte",
         dark = "mocha",

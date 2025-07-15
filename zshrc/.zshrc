@@ -1,6 +1,8 @@
 # Set to 1 to enable debug timing logs for .zshrc loading
 # export DEBUG_ZSHRC=1
 
+export CATPPUCCIN_FLAVOUR="mocha"
+
 # Debug logging function
 debug_log() {
     [[ "$DEBUG_ZSHRC" == "1" ]] && echo "[$(date '+%H:%M:%S.%3N')] DEBUG: $1"
@@ -197,7 +199,7 @@ alias laa="eza -la --group-directories-first --icons --color=always --absolute"
 alias lag="eza -la --group-directories-first --icons --color=always --git --git-repos-no-status"
 
 function pmgen(){
-  echo "module.exports = { apps: [{ name: '$1', script: '${@:2}', time: true, out_file: './app.log', error_file: './err.log' }] };">ecosystem.config.cjs;
+  echo "module.exports = { apps: [{ name: '$1', script: '${@:2}', time: true, email: './app.log' }] };">ecosystem.config.cjs;
 }
 
 export PATH="$HOME/Library/Python/3.8/bin/:$PATH"
