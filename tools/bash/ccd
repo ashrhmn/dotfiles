@@ -1,0 +1,234 @@
+#!/bin/bash
+
+set -e
+
+CCD_CONFIG_DIR="$HOME/.ccd"
+CONFIG_FILE="$CCD_CONFIG_DIR/config.yml"
+DEFAULT_ACCOUNT="default"
+
+usage() {
+    cat << EOF
+Usage: ccd [COMMAND] [OPTIONS]
+
+Commands:
+    switch <account>     Switch to specified account
+    create <account>     Create new account
+    list                 List all accounts
+    current              Show current account
+
+Options:
+    --account <name>     Use specific account without switching default
+    --safe              Skip --dangerously-skip-permissions flag
+
+Examples:
+    ccd                          Run with current default account
+    ccd --account myaccount      Run with 'myaccount' without changing default
+    ccd switch myaccount         Switch default to 'myaccount'
+    ccd create newaccount        Create 'newaccount' and switch to it
+EOF
+}
+
+get_current_account() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        grep "^current_account:" "$CONFIG_FILE" | cut -d' ' -f2 | tr -d '"'
+    else
+        echo "$DEFAULT_ACCOUNT"
+    fi
+}
+
+set_current_account() {
+    local account="$1"
+    mkdir -p "$CCD_CONFIG_DIR"
+    echo "current_account: \"$account\"" > "$CONFIG_FILE"
+}
+
+create_account() {
+    local account="$1"
+    local account_dir="$CCD_CONFIG_DIR/$account"
+    
+    if [[ -z "$account" ]]; then
+        echo "Error: Account name required"
+        exit 1
+    fi
+    
+    if [[ -d "$account_dir" ]]; then
+        echo "Account '$account' already exists"
+        exit 1
+    fi
+    
+    mkdir -p "$account_dir/.claude"
+    
+    if [[ ! -f "$account_dir/.claude/.credentials.json" ]]; then
+        echo "{}" > "$account_dir/.claude/.credentials.json"
+    fi
+    
+    if [[ ! -f "$account_dir/.claude.json" ]]; then
+        echo "{}" > "$account_dir/.claude.json"
+    fi
+    
+    set_current_account "$account"
+    echo "Created account '$account' and set as current"
+}
+
+list_accounts() {
+    if [[ ! -d "$CCD_CONFIG_DIR" ]]; then
+        echo "No accounts found"
+        return
+    fi
+    
+    local current=$(get_current_account)
+    echo "Available accounts:"
+    for dir in "$CCD_CONFIG_DIR"/*/; do
+        if [[ -d "$dir" ]]; then
+            local account=$(basename "$dir")
+            if [[ "$account" == "$current" ]]; then
+                echo "* $account (current)"
+            else
+                echo "  $account"
+            fi
+        fi
+    done
+}
+
+switch_account() {
+    local account="$1"
+    local account_dir="$CCD_CONFIG_DIR/$account"
+    
+    if [[ -z "$account" ]]; then
+        echo "Error: Account name required"
+        exit 1
+    fi
+    
+    if [[ ! -d "$account_dir" ]]; then
+        echo "Error: Account '$account' does not exist"
+        exit 1
+    fi
+    
+    set_current_account "$account"
+    echo "Switched to account '$account'"
+}
+
+setup_symlinks() {
+    local account="$1"
+    local account_dir="$CCD_CONFIG_DIR/$account"
+    local cwd_ccd_dir="$(pwd)/.ccd"
+    
+    mkdir -p "$account_dir/.claude"
+    mkdir -p "$cwd_ccd_dir/.claude"
+    
+    # Only create empty files if they don't exist in the account directory
+    if [[ ! -f "$account_dir/.claude/.credentials.json" ]]; then
+        echo "{}" > "$account_dir/.claude/.credentials.json"
+    fi
+    
+    if [[ ! -f "$account_dir/.claude.json" ]]; then
+        echo "{}" > "$account_dir/.claude.json"
+    fi
+    
+    # Remove existing symlinks or files in current directory (but not the target files)
+    if [[ -L "$cwd_ccd_dir/.claude.json" ]] || [[ -f "$cwd_ccd_dir/.claude.json" ]]; then
+        rm -f "$cwd_ccd_dir/.claude.json"
+    fi
+    
+    if [[ -L "$cwd_ccd_dir/.claude/.credentials.json" ]] || [[ -f "$cwd_ccd_dir/.claude/.credentials.json" ]]; then
+        rm -f "$cwd_ccd_dir/.claude/.credentials.json"
+    fi
+    
+    # Create new symlinks
+    ln -s "$account_dir/.claude.json" "$cwd_ccd_dir/.claude.json"
+    ln -s "$account_dir/.claude/.credentials.json" "$cwd_ccd_dir/.claude/.credentials.json"
+}
+
+find_claude_binary() {
+    local claude_path
+    claude_path=$(which claude 2>/dev/null || true)
+    
+    if [[ -n "$claude_path" ]]; then
+        echo "$claude_path"
+    else
+        echo "/home/ash/.claude/local/claude"
+    fi
+}
+
+run_claude() {
+    local use_safe="$1"
+    local claude_bin
+    claude_bin=$(find_claude_binary)
+    
+    if [[ ! -f "$claude_bin" ]]; then
+        echo "Error: Claude binary not found at $claude_bin"
+        exit 1
+    fi
+    
+    local claude_args=""
+    if [[ "$use_safe" != "true" ]]; then
+        claude_args="--dangerously-skip-permissions"
+    fi
+    
+    HOME="$(pwd)/.ccd" bash -c "'$claude_bin' $claude_args"
+}
+
+main() {
+    local account_override=""
+    local use_safe="false"
+    local command=""
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --account)
+                account_override="$2"
+                shift 2
+                ;;
+            --safe)
+                use_safe="true"
+                shift
+                ;;
+            switch|create|list|current)
+                command="$1"
+                shift
+                break
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+        esac
+    done
+    
+    case "$command" in
+        create)
+            create_account "$1"
+            ;;
+        switch)
+            switch_account "$1"
+            ;;
+        list)
+            list_accounts
+            ;;
+        current)
+            echo "Current account: $(get_current_account)"
+            ;;
+        "")
+            local account="${account_override:-$(get_current_account)}"
+            
+            if [[ ! -d "$CCD_CONFIG_DIR/$DEFAULT_ACCOUNT" ]] && [[ "$account" == "$DEFAULT_ACCOUNT" ]]; then
+                create_account "$DEFAULT_ACCOUNT"
+            fi
+            
+            setup_symlinks "$account"
+            run_claude "$use_safe"
+            ;;
+        *)
+            echo "Unknown command: $command"
+            usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
