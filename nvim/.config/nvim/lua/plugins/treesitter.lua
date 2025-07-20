@@ -42,6 +42,8 @@ return {
         "dockerfile",
         "gitignore",
         "sql",
+        -- "latex",
+        -- "typst",
       },
       incremental_selection = {
         enable = true,

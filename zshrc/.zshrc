@@ -298,3 +298,5 @@ export PATH="$PATH:/Users/ash/.local/bin"
 
 debug_log ".zshrc loading complete"
 
+
+alias claude="/home/ash/.claude/local/claude"

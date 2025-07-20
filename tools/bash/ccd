@@ -19,12 +19,14 @@ Commands:
 Options:
     --account <name>     Use specific account without switching default
     --safe              Skip --dangerously-skip-permissions flag
+    --login             Login mode - authenticate with Claude (use only for login)
 
 Examples:
     ccd                          Run with current default account
     ccd --account myaccount      Run with 'myaccount' without changing default
     ccd switch myaccount         Switch default to 'myaccount'
     ccd create newaccount        Create 'newaccount' and switch to it
+    ccd --login                  Login/authenticate with Claude
 EOF
 }
 
@@ -152,6 +154,8 @@ find_claude_binary() {
 
 run_claude() {
     local use_safe="$1"
+    local login_mode="$2"
+    local account="$3"
     local claude_bin
     claude_bin=$(find_claude_binary)
     
@@ -165,12 +169,17 @@ run_claude() {
         claude_args="--dangerously-skip-permissions"
     fi
     
-    HOME="$(pwd)/.ccd" bash -c "'$claude_bin' $claude_args"
+    if [[ "$login_mode" == "true" ]]; then
+        HOME="$CCD_CONFIG_DIR/$account" bash -c "'$claude_bin' $claude_args"
+    else
+        HOME="$(pwd)/.ccd" bash -c "'$claude_bin' $claude_args"
+    fi
 }
 
 main() {
     local account_override=""
     local use_safe="false"
+    local login_mode="false"
     local command=""
     
     while [[ $# -gt 0 ]]; do
@@ -181,6 +190,10 @@ main() {
                 ;;
             --safe)
                 use_safe="true"
+                shift
+                ;;
+            --login)
+                login_mode="true"
                 shift
                 ;;
             switch|create|list|current)
@@ -220,8 +233,24 @@ main() {
                 create_account "$DEFAULT_ACCOUNT"
             fi
             
-            setup_symlinks "$account"
-            run_claude "$use_safe"
+            if [[ "$login_mode" == "true" ]]; then
+                echo "WARNING: This session is for authentication only."
+                echo "After login, exit Claude and run 'ccd' normally."
+                echo "Press Enter to continue..."
+                read
+                run_claude "$use_safe" "true" "$account"
+                echo "Login session complete. Run 'ccd' to use Claude normally."
+            else
+                # Check if credential files exist
+                if [[ ! -f "$CCD_CONFIG_DIR/$account/.claude/.credentials.json" ]] || [[ ! -f "$CCD_CONFIG_DIR/$account/.claude.json" ]]; then
+                    echo "Error: Credential files missing for account '$account'."
+                    echo "Run 'ccd --login' first to initialize credentials."
+                    exit 1
+                fi
+                
+                setup_symlinks "$account"
+                run_claude "$use_safe" "false" "$account"
+            fi
             ;;
         *)
             echo "Unknown command: $command"
