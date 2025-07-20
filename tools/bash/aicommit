@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# AI-generated commit message script
+# This script collects staged changes and recent logs, then feeds them to gemini
+
+# Check if there are staged changes
+if git diff --staged --quiet; then
+    echo "Error: No staged changes to commit. Use 'git add' to stage changes first."
+    exit 1
+fi
+
+# Get staged changes
+staged_changes=$(git diff --staged)
+
+# Get recent commit history
+recent_logs=$(git log --oneline -10)
+
+# Create temporary file for commit message
+temp_file=$(mktemp)
+
+# Prepare the prompt with embedded data
+prompt="You are a git commit message generator. Here are the staged git changes and recent commit history:
+
+STAGED CHANGES:
+$staged_changes
+
+RECENT COMMITS:
+$recent_logs
+
+Generate ONLY the commit message following these guidelines:
+
+1. Use conventional commit format: type(scope): description
+2. Types: feat, fix, refactor, docs, style, test, chore, perf, ci
+3. Subject line: imperative mood, 50 chars max, no period
+4. If changes are complex, add a body explaining WHY and WHAT
+5. Focus on business logic and functionality, not just file changes
+6. Group related changes in bullet points if needed
+7. Match the style and tone of recent commits
+
+IMPORTANT: Return ONLY the commit message. Do not include any prefix like 'Here is your commit message:' or wrap it in backticks. Just return the raw commit message text."
+
+# Call gemini with the prepared prompt and save to temp file
+gemini -m "gemini-2.5-flash" -p "$prompt" > "$temp_file"
+
+# Open git commit editor with the generated message
+git commit -e -F "$temp_file"
+
+# Clean up
+rm "$temp_file"
