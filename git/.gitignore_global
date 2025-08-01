@@ -1,1 +1,7 @@
-.ccd
+node_modules
+.env
+venv
+dist
+build
+out
+.next
