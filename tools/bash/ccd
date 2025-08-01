@@ -2,7 +2,11 @@
 
 set -e
 
+# Always bump the version when making changes, follow semantic versioning based on changes made.
+VERSION="1.0.2"
 CCD_CONFIG_DIR="$HOME/.ccd"
+ACCOUNTS_DIR="$CCD_CONFIG_DIR/accounts"
+COMMON_DIR="$CCD_CONFIG_DIR/common"
 CONFIG_FILE="$CCD_CONFIG_DIR/config.yml"
 DEFAULT_ACCOUNT="default"
 
@@ -15,18 +19,25 @@ Commands:
     create <account>     Create new account
     list                 List all accounts
     current              Show current account
+    version              Show version information
 
 Options:
     --account <name>     Use specific account without switching default
     --safe              Skip --dangerously-skip-permissions flag
-    --login             Login mode - authenticate with Claude (use only for login)
+    --no-background     Disable background tasks (omits ENABLE_BACKGROUND_TASKS)
+    --login             Login mode - authenticate with Claude (stores credentials)
 
 Examples:
     ccd                          Run with current default account
     ccd --account myaccount      Run with 'myaccount' without changing default
     ccd switch myaccount         Switch default to 'myaccount'
     ccd create newaccount        Create 'newaccount' and switch to it
-    ccd --login                  Login/authenticate with Claude
+    ccd --login                  Login/authenticate with Claude (stores session)
+
+Note:
+    Logging in without --login flag will NOT store session and ask to login
+    again next time. Use --login flag to login which stores the login session,
+    then exit and run 'ccd' normally to use Claude Code.
 EOF
 }
 
@@ -44,9 +55,35 @@ set_current_account() {
     echo "current_account: \"$account\"" > "$CONFIG_FILE"
 }
 
+ensure_common_dir() {
+    mkdir -p "$COMMON_DIR"
+    
+    # Create CLAUDE.md if it doesn't exist
+    if [[ ! -f "$COMMON_DIR/CLAUDE.md" ]]; then
+        cat > "$COMMON_DIR/CLAUDE.md" << 'EOF'
+## Code Guidelines
+- Never use emoji in the codebase/logs
+EOF
+    fi
+    
+    # Create settings.json if it doesn't exist
+    if [[ ! -f "$COMMON_DIR/settings.json" ]]; then
+        cat > "$COMMON_DIR/settings.json" << 'EOF'
+{
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "0",
+    "DISABLE_ERROR_REPORTING": 1,
+    "DISABLE_TELEMETRY": 1
+  },
+  "includeCoAuthoredBy": false
+}
+EOF
+    fi
+}
+
 create_account() {
     local account="$1"
-    local account_dir="$CCD_CONFIG_DIR/$account"
+    local account_dir="$ACCOUNTS_DIR/$account"
     
     if [[ -z "$account" ]]; then
         echo "Error: Account name required"
@@ -59,6 +96,7 @@ create_account() {
     fi
     
     mkdir -p "$account_dir/.claude"
+    ensure_common_dir
     
     if [[ ! -f "$account_dir/.claude/.credentials.json" ]]; then
         echo "{}" > "$account_dir/.claude/.credentials.json"
@@ -73,14 +111,14 @@ create_account() {
 }
 
 list_accounts() {
-    if [[ ! -d "$CCD_CONFIG_DIR" ]]; then
+    if [[ ! -d "$ACCOUNTS_DIR" ]]; then
         echo "No accounts found"
         return
     fi
     
     local current=$(get_current_account)
     echo "Available accounts:"
-    for dir in "$CCD_CONFIG_DIR"/*/; do
+    for dir in "$ACCOUNTS_DIR"/*/; do
         if [[ -d "$dir" ]]; then
             local account=$(basename "$dir")
             if [[ "$account" == "$current" ]]; then
@@ -94,7 +132,7 @@ list_accounts() {
 
 switch_account() {
     local account="$1"
-    local account_dir="$CCD_CONFIG_DIR/$account"
+    local account_dir="$ACCOUNTS_DIR/$account"
     
     if [[ -z "$account" ]]; then
         echo "Error: Account name required"
@@ -112,11 +150,12 @@ switch_account() {
 
 setup_symlinks() {
     local account="$1"
-    local account_dir="$CCD_CONFIG_DIR/$account"
+    local account_dir="$ACCOUNTS_DIR/$account"
     local cwd_ccd_dir="$(pwd)/.ccd"
     
     mkdir -p "$account_dir/.claude"
     mkdir -p "$cwd_ccd_dir/.claude"
+    ensure_common_dir
     
     # Only create empty files if they don't exist in the account directory
     if [[ ! -f "$account_dir/.claude/.credentials.json" ]]; then
@@ -136,9 +175,19 @@ setup_symlinks() {
         rm -f "$cwd_ccd_dir/.claude/.credentials.json"
     fi
     
+    if [[ -L "$cwd_ccd_dir/.claude/CLAUDE.md" ]] || [[ -f "$cwd_ccd_dir/.claude/CLAUDE.md" ]]; then
+        rm -f "$cwd_ccd_dir/.claude/CLAUDE.md"
+    fi
+    
+    if [[ -L "$cwd_ccd_dir/.claude/settings.json" ]] || [[ -f "$cwd_ccd_dir/.claude/settings.json" ]]; then
+        rm -f "$cwd_ccd_dir/.claude/settings.json"
+    fi
+    
     # Create new symlinks
     ln -s "$account_dir/.claude.json" "$cwd_ccd_dir/.claude.json"
     ln -s "$account_dir/.claude/.credentials.json" "$cwd_ccd_dir/.claude/.credentials.json"
+    ln -s "$COMMON_DIR/CLAUDE.md" "$cwd_ccd_dir/.claude/CLAUDE.md"
+    ln -s "$COMMON_DIR/settings.json" "$cwd_ccd_dir/.claude/settings.json"
 }
 
 find_claude_binary() {
@@ -156,6 +205,9 @@ run_claude() {
     local use_safe="$1"
     local login_mode="$2"
     local account="$3"
+    local enable_background="$4"
+    shift 4
+    local additional_args="$*"
     local claude_bin
     claude_bin=$(find_claude_binary)
     
@@ -169,10 +221,19 @@ run_claude() {
         claude_args="--dangerously-skip-permissions"
     fi
     
+    if [[ -n "$additional_args" ]]; then
+        claude_args="$claude_args $additional_args"
+    fi
+    
+    local env_vars=""
+    if [[ "$enable_background" == "1" ]]; then
+        env_vars="ENABLE_BACKGROUND_TASKS=1"
+    fi
+    
     if [[ "$login_mode" == "true" ]]; then
-        HOME="$CCD_CONFIG_DIR/$account" bash -c "'$claude_bin' $claude_args"
+        HOME="$ACCOUNTS_DIR/$account" bash -c "$env_vars '$claude_bin' $claude_args"
     else
-        HOME="$(pwd)/.ccd" bash -c "'$claude_bin' $claude_args"
+        HOME="$(pwd)/.ccd" bash -c "$env_vars '$claude_bin' $claude_args"
     fi
 }
 
@@ -180,7 +241,9 @@ main() {
     local account_override=""
     local use_safe="false"
     local login_mode="false"
+    local enable_background="1"
     local command=""
+    local unknown_args=()
     
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -192,11 +255,15 @@ main() {
                 use_safe="true"
                 shift
                 ;;
+            --no-background)
+                enable_background="0"
+                shift
+                ;;
             --login)
                 login_mode="true"
                 shift
                 ;;
-            switch|create|list|current)
+            switch|create|list|current|version)
                 command="$1"
                 shift
                 break
@@ -206,12 +273,15 @@ main() {
                 exit 0
                 ;;
             *)
-                echo "Unknown option: $1"
-                usage
-                exit 1
+                # Collect unknown arguments to pass to Claude
+                unknown_args+=("$1")
+                shift
                 ;;
         esac
     done
+    
+    # Add any remaining arguments to unknown_args
+    unknown_args+=("$@")
     
     case "$command" in
         create)
@@ -226,10 +296,13 @@ main() {
         current)
             echo "Current account: $(get_current_account)"
             ;;
+        version)
+            echo "ccd version $VERSION"
+            ;;
         "")
             local account="${account_override:-$(get_current_account)}"
             
-            if [[ ! -d "$CCD_CONFIG_DIR/$DEFAULT_ACCOUNT" ]] && [[ "$account" == "$DEFAULT_ACCOUNT" ]]; then
+            if [[ ! -d "$ACCOUNTS_DIR/$DEFAULT_ACCOUNT" ]] && [[ "$account" == "$DEFAULT_ACCOUNT" ]]; then
                 create_account "$DEFAULT_ACCOUNT"
             fi
             
@@ -238,18 +311,18 @@ main() {
                 echo "After login, exit Claude and run 'ccd' normally."
                 echo "Press Enter to continue..."
                 read
-                run_claude "$use_safe" "true" "$account"
+                run_claude "$use_safe" "true" "$account" "$enable_background" "${unknown_args[@]}"
                 echo "Login session complete. Run 'ccd' to use Claude normally."
             else
                 # Check if credential files exist
-                if [[ ! -f "$CCD_CONFIG_DIR/$account/.claude/.credentials.json" ]] || [[ ! -f "$CCD_CONFIG_DIR/$account/.claude.json" ]]; then
+                if [[ ! -f "$ACCOUNTS_DIR/$account/.claude/.credentials.json" ]] || [[ ! -f "$ACCOUNTS_DIR/$account/.claude.json" ]]; then
                     echo "Error: Credential files missing for account '$account'."
                     echo "Run 'ccd --login' first to initialize credentials."
                     exit 1
                 fi
                 
                 setup_symlinks "$account"
-                run_claude "$use_safe" "false" "$account"
+                run_claude "$use_safe" "false" "$account" "$enable_background" "${unknown_args[@]}"
             fi
             ;;
         *)
