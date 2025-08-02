@@ -1,4 +1,4 @@
-.PHONY: all clean install bash-tools go-tools submodules update-submodules
+.PHONY: all clean install bash-tools go-tools submodules update-submodules help
 
 # Directories
 BIN_DIR := bin/.bin
@@ -11,14 +11,24 @@ LINUX_IGNORE :=
 # Go projects (as git submodules)
 GO_PROJECTS := tools/ts-flatten tools/tsndexer tools/lctx
 
+## help: show this help message
+help:
+	@echo "Usage:"
+	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' | sed -e 's/^/ /'
+
+## confirm: confirmation prompt for destructive operations
+confirm:
+	@echo -n 'Are you sure? [y/N] ' && read ans && [ $${ans:-N} = y ]
+
+## all: build all tools (bash + go)
 all: bash-tools go-tools
 
-# Update git submodules
+## update-submodules: update git submodules
 update-submodules:
 	@echo "🔄 Updating git submodules..."
 	@git submodule update --init --recursive 2>/dev/null || echo "⚠️  No submodules found or git not available"
 
-# Bash tools - just copy and make executable
+## bash-tools: build only bash tools
 bash-tools:
 	@echo "📝 Installing bash tools..."
 	@mkdir -p $(BIN_DIR)
@@ -55,7 +65,7 @@ bash-tools:
 		echo "  ⚠️  No bash tools directory found"; \
 	fi
 
-# Go tools - build each submodule project
+## go-tools: build only go tools
 go-tools: update-submodules
 	@echo "🔧 Building Go tools..."
 	@mkdir -p $(BIN_DIR)
@@ -77,7 +87,7 @@ go-tools: update-submodules
 		fi \
 	done
 
-# Build specific Go project
+## build-%: build specific go project (e.g., build-ts-flatten)
 build-%:
 	@project_name=$(subst build-,,$@); \
 	project="tools/$$project_name"; \
@@ -96,7 +106,7 @@ build-%:
 		exit 1; \
 	fi
 
-# Development helpers
+## dev-go: run tests and tidy for all go projects
 dev-go:
 	@echo "🧪 Running Go development tasks..."
 	@for project in $(GO_PROJECTS); do \
@@ -110,6 +120,7 @@ dev-go:
 		fi \
 	done
 
+## lint-bash: lint bash scripts with shellcheck
 lint-bash:
 	@echo "🔍 Linting bash scripts..."
 	@if [ -d "$(BASH_DIR)" ]; then \
@@ -125,16 +136,18 @@ lint-bash:
 		done; \
 	fi
 
-clean:
+## clean: clean up the build binaries
+clean: confirm
 	@echo "🧹 Cleaning up..."
 	@rm -rf $(BIN_DIR)/*
 
+## install: build and show results
 install: all
 	@echo "📦 Tools built and ready for stow!"
 	@echo "📋 Available binaries:"
 	@ls -la $(BIN_DIR)/ 2>/dev/null || echo "  (none built)"
 
-# Show what would be built
+## show: show available tools
 show:
 	@echo "📋 Available tools:"
 	@echo "  🐚 Bash tools:"
@@ -157,37 +170,15 @@ show:
 		fi \
 	done
 
-# Submodule management
+## init-submodules: initialize all submodules
 init-submodules:
 	@echo "🔄 Initializing all submodules..."
 	@git submodule update --init --recursive
 
+## clone-fresh: setup after fresh git clone
 clone-fresh:
 	@echo "🆕 Setting up fresh clone (run this after 'git clone')..."
 	@git submodule update --init --recursive
 	@make all
 
-# Help
-help:
-	@echo "🛠️  Dotfiles Tools Build System"
-	@echo ""
-	@echo "📋 Main targets:"
-	@echo "  all              Build all tools (bash + go)"
-	@echo "  bash-tools       Build only bash tools"
-	@echo "  go-tools         Build only go tools"
-	@echo "  clean            Remove all built binaries"
-	@echo "  install          Build and show results"
-	@echo ""
-	@echo "🔧 Development:"
-	@echo "  build-<project>  Build specific go project (e.g., build-ts-flatten)"
-	@echo "  dev-go           Run tests and tidy for all go projects"
-	@echo "  lint-bash        Lint bash scripts with shellcheck"
-	@echo ""
-	@echo "📦 Submodules:"
-	@echo "  init-submodules  Initialize git submodules"
-	@echo "  update-submodules Update existing submodules"
-	@echo "  clone-fresh      Setup after fresh git clone"
-	@echo ""
-	@echo "📋 Info:"
-	@echo "  show             Show available tools"
-	@echo "  help             Show this help" 
+ 
