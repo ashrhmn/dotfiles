@@ -7,12 +7,11 @@
         echo \"Cloned to: $org_repo\"; \
     }; f"
     
-    # AI-generated commit message with editor
-    aicommit = "!aicommit"
+    # Gemini-generated commit message with editor
+    gemmit = "!gemmit"
     
     # Short aliases
     co = clone-org
-    ac = aicommit
 
 [user]
 	name = Ashik R.

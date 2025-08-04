@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# AI-generated commit message script
+# Gemini-generated commit message script
 # This script collects staged changes and recent logs, then feeds them to gemini
 
 # Check if there are staged changes

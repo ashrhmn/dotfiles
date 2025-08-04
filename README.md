@@ -69,7 +69,7 @@ All scripts are built and placed in `bin/.bin/`, which should be added to your `
 
 | Script       | Description                                                                                                                            | Language |
 | :----------- | :------------------------------------------------------------------------------------------------------------------------------------- | :------- |
-| `aicommit`   | Generates a conventional commit message using Gemini, based on staged changes and recent commit history. Excludes lockfiles.             | Bash     |
+| `gemmit`     | Generates a conventional commit message using Gemini, based on staged changes and recent commit history. Excludes lockfiles.             | Bash     |
 | `ccd`        | A CLI tool to manage and switch between multiple configuration profiles for the Claude/Gemini CLI.                                       | Bash     |
 | `cpg`        | (Copy Git) Copies the contents of one git repository to one or more target repositories, with options to prune and ignore files.         | Bash     |
 | `lctx`       | (LLM Context) Manages context files for LLM tools by symlinking them from a central repo to project directories using `stow`.            | Go       |
