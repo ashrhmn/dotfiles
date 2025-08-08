@@ -1,8 +1,3 @@
-# Set to 1 to enable debug timing logs for .zshrc loading
-# export DEBUG_ZSHRC=1
-
-export CATPPUCCIN_FLAVOUR="mocha"
-
 # Debug logging function
 debug_log() {
     [[ "$DEBUG_ZSHRC" == "1" ]] && echo "[$(date '+%H:%M:%S.%3N')] DEBUG: $1"
@@ -32,6 +27,9 @@ debug_log "ZSH variable set"
 # See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
 # ZSH_THEME="powerlevel10k/powerlevel10k"
 ZSH_THEME="robbyrussell"
+# ZSH_THEME="catppuccin"
+# CATPPUCCIN_FLAVOR="mocha" # Required! Options: mocha, flappe, macchiato, latte
+# CATPPUCCIN_SHOW_TIME=true  # Optional! If set to true, this will add the current time to the prompt.
 # ZSH_THEME="af-magic"
 # ZSH_THEME=""
 
@@ -116,6 +114,7 @@ safe_source() {
 
 debug_log "Loading secrets"
 safe_source "$HOME/.secrets.sh"
+safe_source "$HOME/.local.env.sh"
 debug_log "Secrets loaded"
 
 # User configuration
