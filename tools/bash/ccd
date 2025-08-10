@@ -3,7 +3,7 @@
 set -e
 
 # Always bump the version when making changes, follow semantic versioning based on changes made.
-VERSION="1.0.2"
+VERSION="1.1.0"
 CCD_CONFIG_DIR="$HOME/.ccd"
 ACCOUNTS_DIR="$CCD_CONFIG_DIR/accounts"
 COMMON_DIR="$CCD_CONFIG_DIR/common"
@@ -25,6 +25,7 @@ Options:
     --account <name>     Use specific account without switching default
     --safe              Skip --dangerously-skip-permissions flag
     --no-background     Disable background tasks (omits ENABLE_BACKGROUND_TASKS)
+    --no-continue       Skip --continue flag (default: enabled)
     --login             Login mode - authenticate with Claude (stores credentials)
 
 Examples:
@@ -206,7 +207,8 @@ run_claude() {
     local login_mode="$2"
     local account="$3"
     local enable_background="$4"
-    shift 4
+    local use_continue="$5"
+    shift 5
     local additional_args="$*"
     local claude_bin
     claude_bin=$(find_claude_binary)
@@ -219,6 +221,10 @@ run_claude() {
     local claude_args=""
     if [[ "$use_safe" != "true" ]]; then
         claude_args="--dangerously-skip-permissions"
+    fi
+    
+    if [[ "$use_continue" == "true" ]]; then
+        claude_args="$claude_args --continue"
     fi
     
     if [[ -n "$additional_args" ]]; then
@@ -242,6 +248,7 @@ main() {
     local use_safe="false"
     local login_mode="false"
     local enable_background="1"
+    local use_continue="true"
     local command=""
     local unknown_args=()
     
@@ -261,6 +268,10 @@ main() {
                 ;;
             --login)
                 login_mode="true"
+                shift
+                ;;
+            --no-continue)
+                use_continue="false"
                 shift
                 ;;
             switch|create|list|current|version)
@@ -311,7 +322,7 @@ main() {
                 echo "After login, exit Claude and run 'ccd' normally."
                 echo "Press Enter to continue..."
                 read
-                run_claude "$use_safe" "true" "$account" "$enable_background" "${unknown_args[@]}"
+                run_claude "$use_safe" "true" "$account" "$enable_background" "$use_continue" "${unknown_args[@]}"
                 echo "Login session complete. Run 'ccd' to use Claude normally."
             else
                 # Check if credential files exist
@@ -322,7 +333,7 @@ main() {
                 fi
                 
                 setup_symlinks "$account"
-                run_claude "$use_safe" "false" "$account" "$enable_background" "${unknown_args[@]}"
+                run_claude "$use_safe" "false" "$account" "$enable_background" "$use_continue" "${unknown_args[@]}"
             fi
             ;;
         *)

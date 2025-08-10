@@ -14,8 +14,8 @@ return {
     dependencies = {
       "hrsh7th/cmp-path",
       "hrsh7th/cmp-buffer",
-      "zbirenbaum/copilot.lua",
-      "zbirenbaum/copilot-cmp",
+      -- "zbirenbaum/copilot.lua",
+      -- "zbirenbaum/copilot-cmp",
       "hrsh7th/cmp-nvim-lua",
       "David-Kunz/cmp-npm",
       "onsails/lspkind.nvim",
@@ -25,14 +25,14 @@ return {
       local luasnip = require("luasnip")
       local lspkind = require("lspkind")
 
-      require("copilot").setup({
-        suggestion = {
-          enabled = true,
-          max_length = 1000,
-          debounce = 100,
-        },
-      })
-      require("copilot_cmp").setup()
+      -- require("copilot").setup({
+      --   suggestion = {
+      --     enabled = true,
+      --     max_length = 1000,
+      --     debounce = 100,
+      --   },
+      -- })
+      -- require("copilot_cmp").setup()
 
       require("luasnip.loaders.from_vscode").lazy_load()
 
@@ -72,7 +72,7 @@ return {
           { name = "nvim_lua", priority = 98 },
           { name = "path", priority = 97 },
           { name = "npm" },
-          { name = "copilot" },
+          -- { name = "copilot" },
         }, {
           { name = "buffer" },
         }),
