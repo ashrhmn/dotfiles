@@ -233,7 +233,7 @@ run_claude() {
     
     local env_vars=""
     if [[ "$enable_background" == "1" ]]; then
-        env_vars="ENABLE_BACKGROUND_TASKS=1"
+        env_vars="ENABLE_BACKGROUND_TASKS=1 FORCE_AUTO_BACKGROUND_TASKS=1"
     fi
     
     if [[ "$login_mode" == "true" ]]; then
