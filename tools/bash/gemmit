@@ -48,9 +48,6 @@ staged_changes=$(git diff --staged -- . \
   ':(exclude).venv/'
 )
 
-# Get recent commit history
-recent_logs=$(git log --oneline -10)
-
 # Create temporary file for commit message
 temp_file=$(mktemp)
 
@@ -60,9 +57,6 @@ prompt="You are a git commit message generator. Here are the staged git changes 
 STAGED CHANGES:
 $staged_changes
 
-RECENT COMMITS:
-$recent_logs
-
 Generate ONLY the commit message following these guidelines:
 
 1. Use conventional commit format: type(scope): description
@@ -71,7 +65,6 @@ Generate ONLY the commit message following these guidelines:
 4. If changes are complex, add a body explaining WHY and WHAT
 5. Focus on business logic and functionality, not just file changes
 6. Group related changes in bullet points if needed
-7. Match the style and tone of recent commits
 
 IMPORTANT: Return ONLY the commit message. Do not include any prefix like 'Here is your commit message:' or wrap it in backticks. Just return the raw commit message text."
 
