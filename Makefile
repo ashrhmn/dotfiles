@@ -9,7 +9,7 @@ DARWIN_IGNORE := pbcopy xdg-open
 LINUX_IGNORE :=
 
 # Go projects (as git submodules)
-GO_PROJECTS := tools/ts-flatten tools/tsndexer tools/lctx tools/tgp-report
+GO_PROJECTS := ts-flatten tsndexer lctx tgp-report
 
 ## help: show this help message
 help:
@@ -70,10 +70,11 @@ go-tools: update-submodules
 	@echo "🔧 Building Go tools..."
 	@mkdir -p $(BIN_DIR)
 	@for project in $(GO_PROJECTS); do \
-		project_name=$$(basename "$$project"); \
-		if [ -d "$$project" ] && [ -f "$$project/go.mod" ]; then \
+		project_path="tools/$$project"; \
+		project_name="$$project"; \
+		if [ -d "$$project_path" ] && [ -f "$$project_path/go.mod" ]; then \
 			echo "  🔨 Building $$project_name..."; \
-			cd "$$project" && \
+			cd "$$project_path" && \
 			if go build -ldflags="-s -w" -o "../../$(BIN_DIR)/$$project_name" . 2>/dev/null; then \
 				echo "  ✅ $$project_name"; \
 			else \
@@ -90,11 +91,11 @@ go-tools: update-submodules
 ## build-%: build specific go project (e.g., build-ts-flatten)
 build-%:
 	@project_name=$(subst build-,,$@); \
-	project="tools/$$project_name"; \
-	if [ -d "$$project" ] && [ -f "$$project/go.mod" ]; then \
+	project_path="tools/$$project_name"; \
+	if [ -d "$$project_path" ] && [ -f "$$project_path/go.mod" ]; then \
 		echo "🔨 Building $$project_name..."; \
 		mkdir -p $(BIN_DIR); \
-		cd "$$project" && \
+		cd "$$project_path" && \
 		if go build -ldflags="-s -w" -o "../../$(BIN_DIR)/$$project_name" .; then \
 			echo "✅ $$project_name built successfully"; \
 		else \
@@ -110,10 +111,11 @@ build-%:
 dev-go:
 	@echo "🧪 Running Go development tasks..."
 	@for project in $(GO_PROJECTS); do \
-		project_name=$$(basename "$$project"); \
-		if [ -d "$$project" ] && [ -f "$$project/go.mod" ]; then \
+		project_path="tools/$$project"; \
+		project_name="$$project"; \
+		if [ -d "$$project_path" ] && [ -f "$$project_path/go.mod" ]; then \
 			echo "  📦 $$project_name: tidying and testing..."; \
-			cd "$$project" && \
+			cd "$$project_path" && \
 			go mod tidy && \
 			go test ./... && \
 			cd ../..; \
@@ -158,9 +160,10 @@ show:
 	fi
 	@echo "  🔧 Go tools:"
 	@for project in $(GO_PROJECTS); do \
-		project_name=$$(basename "$$project"); \
-		if [ -d "$$project" ]; then \
-			if [ -f "$$project/go.mod" ]; then \
+		project_path="tools/$$project"; \
+		project_name="$$project"; \
+		if [ -d "$$project_path" ]; then \
+			if [ -f "$$project_path/go.mod" ]; then \
 				echo "    ✅ $$project_name (ready)"; \
 			else \
 				echo "    ⚠️  $$project_name (no go.mod)"; \
