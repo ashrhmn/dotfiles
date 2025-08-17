@@ -1,4 +1,10 @@
-.PHONY: all clean install bash-tools go-tools submodules update-submodules help
+.PHONY: all clean install bash-tools go-tools submodules update-submodules help default
+
+# Set default target
+.DEFAULT_GOAL := default
+
+## default: update submodules, clean, and build all tools
+default: update-submodules clean all
 
 # Directories
 BIN_DIR := bin/.bin
