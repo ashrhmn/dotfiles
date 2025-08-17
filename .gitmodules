@@ -7,3 +7,6 @@
 [submodule "tools/lctx"]
 	path = tools/lctx
 	url = git@github.com:ashrhmn/lctx.git
+[submodule "tools/tgp-report"]
+	path = tools/tgp-report
+	url = https://github.com/ashrhmn/tgp-report

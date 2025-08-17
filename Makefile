@@ -9,7 +9,7 @@ DARWIN_IGNORE := pbcopy xdg-open
 LINUX_IGNORE :=
 
 # Go projects (as git submodules)
-GO_PROJECTS := tools/ts-flatten tools/tsndexer tools/lctx
+GO_PROJECTS := tools/ts-flatten tools/tsndexer tools/lctx tools/tgp-report
 
 ## help: show this help message
 help:
