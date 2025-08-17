@@ -29,10 +29,12 @@ confirm:
 ## all: build all tools (bash + go)
 all: bash-tools go-tools
 
-## update-submodules: update git submodules
+## update-submodules: update git submodules to latest remote changes
 update-submodules:
 	@echo "🔄 Updating git submodules..."
-	@git submodule update --init --recursive 2>/dev/null || echo "⚠️  No submodules found or git not available"
+	@git submodule init 2>/dev/null
+	@git submodule sync --recursive 2>/dev/null
+	@git submodule foreach --recursive 'git fetch origin; git checkout $$(git rev-parse --abbrev-ref HEAD); git reset --hard origin/$$(git rev-parse --abbrev-ref HEAD); git submodule update --init --recursive; git clean -fdx'
 
 ## bash-tools: build only bash tools
 bash-tools:
