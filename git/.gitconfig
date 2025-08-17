@@ -142,3 +142,5 @@
 [help]
     autocorrect = 1
     # Auto-correct typos after 1 second
+[submodule]
+	recurse = true
