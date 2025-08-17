@@ -14,30 +14,32 @@ return {
 			keymap.set("n", "<leader>ft", "<cmd>TodoTelescope<cr>", { desc = "Find todos" })
 
 			require("telescope").setup({
+				defaults = {
+					vimgrep_arguments = {
+						"rg",
+						"--color=never",
+						"--no-heading",
+						"--with-filename",
+						"--line-number",
+						"--column",
+						"--smart-case",
+						"--hidden",
+						"--no-ignore-vcs",
+						"--glob=!.git/",
+						"--glob=!node_modules/",
+						"--glob=!tmp/",
+						"--glob=!build/",
+						"--glob=!dist/",
+						"--glob=!out/",
+						"--glob=!.next/",
+						"--glob=!.DS_Store",
+					},
+				},
 				pickers = {
 					live_grep = {
-						find_command = {
-							"rg",
-							"-uu",
-							"--files",
-							"--hidden",
-							"-g",
-							"!.git/",
-							"-g",
-							"!node_modules",
-							"-g",
-							"!tmp/",
-							"-g",
-							"!build/",
-							"-g",
-							"!dist/",
-							"-g",
-							"!out/",
-							"-g",
-							"!.next/",
-							"-g",
-							"!.DS_Store",
-						},
+						additional_args = function()
+							return { "--hidden", "--no-ignore-vcs" }
+						end,
 					},
 					find_files = {
 						find_command = {
