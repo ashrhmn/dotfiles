@@ -1,12 +1,19 @@
 [submodule "tools/ts-flatten"]
 	path = tools/ts-flatten
 	url = git@github.com:ashrhmn/ts-flatten.git
+	branch = main
+
 [submodule "tools/tsndexer"]
 	path = tools/tsndexer
 	url = git@github.com:ashrhmn/tsndexer.git
+	branch = main
+
 [submodule "tools/lctx"]
 	path = tools/lctx
 	url = git@github.com:ashrhmn/lctx.git
+	branch = main
+
 [submodule "tools/tgp-report"]
 	path = tools/tgp-report
-	url = https://github.com/ashrhmn/tgp-report
+	url = git@github.com:ashrhmn/tgp-report.git
+	branch = main
