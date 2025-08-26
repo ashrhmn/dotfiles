@@ -216,3 +216,17 @@ Before considering any implementation complete:
 - [ ] URLs and query parameters use hyphens consistently
 - [ ] File names use hyphens (no camelCase in file names)
 - [ ] Code follows naming conventions and is self-documenting
+
+## TODO Management Instructions
+
+When working on tasks for this project:
+
+1. **Mark TODO items as completed**: After completing any task that corresponds to an item in TODO.md, immediately mark that item as completed by changing `- [ ]` to `- [x]` in the TODO.md file.
+
+2. **Track progress systematically**: Use the TodoWrite tool to track your current work progress and always mark items as completed when finished.
+
+3. **Update TODO.md regularly**: As you discover new tasks during development, add them to the appropriate section in TODO.md with `- [ ]` checkbox format.
+
+4. **Focus on actionable items**: When asked to work on the project, prioritize unchecked items from TODO.md that are relevant to the current task.
+
+5. **Maintain TODO structure**: Keep the existing categorization in TODO.md (Setup and Configuration, Testing and Validation, etc.) when adding new items.
