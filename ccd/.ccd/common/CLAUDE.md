@@ -44,6 +44,34 @@
 - Prefer `type` over `interface` for type definitions
 - Prefer arrow functions over function declarations
 
+**Function Parameter Best Practices**
+
+- **Avoid positional parameters with 4+ arguments** - use object destructuring for better readability and maintainability
+
+  ```typescript
+  // Bad: Hard to read and maintain
+  createUser(
+    "John",
+    "Doe",
+    "john@example.com",
+    25,
+    "admin",
+    true,
+    "2024-01-01",
+  );
+
+  // Good: Clear and self-documenting
+  createUser({
+    firstName: "John",
+    lastName: "Doe",
+    email: "john@example.com",
+    age: 25,
+    role: "admin",
+    isActive: true,
+    createdAt: "2024-01-01",
+  });
+  ```
+
 ## React Development
 
 **Component Architecture**

@@ -1,0 +1,188 @@
+# Codex CLI configuration — defaults with concise docs
+# Location: $CODEX_HOME/config.toml (this file)
+# Notes:
+# - Values here reflect current defaults unless noted; uncomment to customize.
+# - TOML format. Strings use quotes; maps use { key = value }.
+
+# --- Core model settings -----------------------------------------------------
+
+# Model to use (default: "gpt-5").
+# Examples: "gpt-5", "o3", "o4-mini", "codex-*".
+model = "gpt-5"
+
+# Provider id from [model_providers] (default: "openai").
+# You may override the built-in OpenAI base URL via OPENAI_BASE_URL env var.
+model_provider = "openai"
+
+# Reasoning effort for Responses API models (minimal|low|medium|high; default: "medium").
+model_reasoning_effort = "high"
+
+# Reasoning summary mode for o*/codex models (auto|concise|detailed|none; default: "auto").
+model_reasoning_summary = "auto"
+
+# Text verbosity for GPT‑5 family with Responses API (low|medium|high; default: "medium").
+model_verbosity = "medium"
+
+# Force-enable reasoning summaries for current model (default: false).
+model_supports_reasoning_summaries = false
+
+# Context window tokens for current model (unset uses built-in model metadata).
+# model_context_window = 128000
+
+# Maximum output tokens for current model (unset uses provider defaults).
+# model_max_output_tokens = 4096
+
+
+# --- Provider catalog (override/extend built-ins) ---------------------------
+
+# Define additional/override providers. Keys under [model_providers] map to
+# values allowed by `model_provider`. Leave empty to use built-ins.
+
+# [model_providers.openai]
+# name = "OpenAI"
+# base_url = "https://api.openai.com/v1"           # API base URL
+# env_key = "OPENAI_API_KEY"                        # Env var used for Bearer token
+# wire_api = "chat"                                 # chat|responses (default: chat)
+# query_params = {}                                  # Extra query params if needed
+# http_headers = {}                                  # Static extra headers
+# env_http_headers = {}                              # { "X-Header" = "ENV_VAR" }
+# request_max_retries = 4                            # HTTP retries (default: 4)
+# stream_max_retries = 10                            # SSE retry count (default: 10)
+# stream_idle_timeout_ms = 300000                    # 5 minutes (default)
+
+# Example additional providers:
+# [model_providers.ollama]
+# name = "Ollama"
+# base_url = "http://localhost:11434/v1"
+
+# [model_providers.mistral]
+# name = "Mistral"
+# base_url = "https://api.mistral.ai/v1"
+# env_key = "MISTRAL_API_KEY"
+
+# [model_providers.azure]
+# name = "Azure"
+# base_url = "https://YOUR_PROJECT_NAME.openai.azure.com/openai"
+# env_key = "AZURE_OPENAI_API_KEY"                  # or OPENAI_API_KEY
+# query_params = { api-version = "2025-04-01-preview" }
+
+
+# --- Policy: approvals & sandbox --------------------------------------------
+
+# When to prompt for command approval (untrusted|on-failure|on-request|never).
+# Default varies by environment; Codex CLI commonly defaults to "on-failure".
+approval_policy = "never"
+
+# OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
+sandbox_mode = "danger-full-access"
+
+# Extra settings when sandbox_mode = "workspace-write".
+[sandbox_workspace_write]
+# Exclude $TMPDIR from writable roots (default: false)
+exclude_tmpdir_env_var = false
+# Exclude /tmp from writable roots (default: false)
+exclude_slash_tmp = false
+# Additional writable roots (default: empty)
+writable_roots = []
+# Allow outbound network from sandbox (default: false)
+network_access = false
+
+
+# --- Profiles ----------------------------------------------------------------
+
+# Active profile name; equivalent to --profile (unset by default).
+# profile = "default"
+
+# Define named profiles to switch sets of options together.
+# [profiles.o3]
+# model = "o3"
+# model_provider = "openai"
+# approval_policy = "never"
+# model_reasoning_effort = "high"
+# model_reasoning_summary = "detailed"
+
+# [profiles.gpt3]
+# model = "gpt-3.5-turbo"
+# model_provider = "openai"
+
+# [profiles.zdr]
+# model = "o3"
+# model_provider = "openai"
+# approval_policy = "on-failure"
+# disable_response_storage = true
+
+
+# --- Persistence & notifications --------------------------------------------
+
+# Disable Responses storage for Zero Data Retention orgs (default: false).
+disable_response_storage = false
+
+# External notifier program; receives a single JSON argument (unset by default).
+# Example: notify = ["python3", "/path/to/notify.py"]
+# notify = []
+
+# History persistence (save-all|none; default: save-all).
+[history]
+persistence = "save-all"
+# max_bytes currently ignored (not enforced).
+# max_bytes = 0
+
+
+# --- Developer experience ----------------------------------------------------
+
+# URI scheme for clickable citations (vscode|vscode-insiders|windsurf|cursor|none; default: vscode).
+file_opener = "vscode"
+
+# Hide model reasoning events in TUI/exec (default: false).
+hide_agent_reasoning = false
+
+# Surface raw chain-of-thought when available (default: false).
+show_raw_agent_reasoning = false
+
+# Max bytes to read from AGENTS.md into instructions (default: 32768 = 32 KiB).
+project_doc_max_bytes = 32768
+
+# Preferred auth method (chatgpt|apikey; default: chatgpt).
+preferred_auth_method = "chatgpt"
+
+# Enable built-in web search tool (alias: tools.web_search_request) (default: false).
+[tools]
+web_search = true
+
+
+# --- Experimental / advanced -------------------------------------------------
+
+# Base URL for ChatGPT auth flow (unset by default).
+# chatgpt_base_url = ""
+
+# Resume JSONL path to continue a prior session (internal/experimental).
+# experimental_resume = ""
+
+# Replace built-in instructions with file contents (experimental).
+# experimental_instructions_file = ""
+
+# Use experimental exec command tool (default: false).
+experimental_use_exec_command_tool = false
+
+# Override Responses API `originator` header (internal/testing only).
+# responses_originator_header_internal_override = ""
+
+# Mark project/worktree as trusted; key is absolute path (only "trusted" recognized).
+# [projects."/absolute/path/to/project"]
+# trust_level = "trusted"
+
+
+# --- MCP servers -------------------------------------------------------------
+
+# Define MCP servers (stdout/stdin transport). Unset by default.
+# [mcp_servers.server-name]
+# command = "npx"
+# args = ["-y", "mcp-server"]
+# env = { API_KEY = "value" }
+
+
+# --- TUI options (reserved for future use) ----------------------------------
+
+[tui]
+# Reserved for future TUI-specific options.
+

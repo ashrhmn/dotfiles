@@ -299,3 +299,6 @@ debug_log ".zshrc loading complete"
 
 
 alias claude="/home/ash/.claude/local/claude"
+
+# opencode
+export PATH=/home/ash/.opencode/bin:$PATH
