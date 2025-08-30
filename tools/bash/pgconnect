@@ -1,0 +1,186 @@
+#!/bin/bash
+
+set -e
+
+VERSION="1.0.0"
+
+usage() {
+    cat << EOF
+Usage: pgconnect [OPTIONS]
+
+Connect to PostgreSQL using environment variables from .env file
+
+Options:
+    -e, --env-file <file>    Specify custom .env file (default: .env)
+    -h, --help              Show this help message
+    -v, --version           Show version information
+
+Environment Variables (from .env file, in priority order):
+    Host:     DATABASE_HOST, DB_HOST, POSTGRES_HOST, PG_HOST
+    Port:     DATABASE_PORT, DB_PORT, POSTGRES_PORT, PG_PORT
+    User:     DATABASE_USERNAME, DATABASE_USER, DB_USER, DB_USERNAME, POSTGRES_USER, PG_USER
+    Password: DATABASE_PASSWORD, DB_PASSWORD, POSTGRES_PASSWORD, PG_PASSWORD
+    Database: DATABASE_NAME, DATABASE_DB, DB_DATABASE, DB_NAME, POSTGRES_DB, PG_DATABASE
+
+Examples:
+    pgconnect                       Use default .env file
+    pgconnect -e .env.staging       Use .env.staging file
+    pgconnect -e .env.production    Use .env.production file
+
+Note:
+    - Script will error if specified .env file is not found
+    - Missing environment variables will be omitted (no error)
+    - Connects using psql with PostgreSQL environment variables
+EOF
+}
+
+load_env_file() {
+    local env_file="$1"
+    
+    if [[ ! -f "$env_file" ]]; then
+        echo "Error: Environment file '$env_file' not found"
+        exit 1
+    fi
+    
+    # Read .env file and export variables
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip empty lines and comments
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        
+        # Extract key=value pairs
+        if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+            local key="${BASH_REMATCH[1]}"
+            local value="${BASH_REMATCH[2]}"
+            
+            # Remove surrounding quotes if present
+            value="${value#\"}"
+            value="${value%\"}"
+            value="${value#\'}"
+            value="${value%\'}"
+            
+            export "$key=$value"
+        fi
+    done < "$env_file"
+}
+
+get_variable_by_priority() {
+    local var_name="$1"
+    shift
+    local priority_list=("$@")
+    
+    for var in "${priority_list[@]}"; do
+        if [[ -n "${!var}" ]]; then
+            echo "${!var}"
+            echo "Using $var: ${!var}" >&2
+            return
+        fi
+    done
+}
+
+mask_password() {
+    local password="$1"
+    if [[ -z "$password" ]]; then
+        echo "no password"
+    elif [[ "$password" == "" ]]; then
+        echo "empty password"
+    else
+        echo "****"
+    fi
+}
+
+connect_postgres() {
+    local pg_env_vars=""
+    
+    echo "Loading PostgreSQL connection variables:" >&2
+    
+    # Host priority: DATABASE_HOST, DB_HOST, POSTGRES_HOST, PG_HOST
+    local host_vars=(DATABASE_HOST DB_HOST POSTGRES_HOST PG_HOST)
+    local pg_host
+    pg_host=$(get_variable_by_priority "host" "${host_vars[@]}")
+    if [[ -n "$pg_host" ]]; then
+        pg_env_vars="$pg_env_vars PGHOST='$pg_host'"
+    else
+        echo "No host variable found" >&2
+    fi
+    
+    # Port priority: DATABASE_PORT, DB_PORT, POSTGRES_PORT, PG_PORT
+    local port_vars=(DATABASE_PORT DB_PORT POSTGRES_PORT PG_PORT)
+    local pg_port
+    pg_port=$(get_variable_by_priority "port" "${port_vars[@]}")
+    if [[ -n "$pg_port" ]]; then
+        pg_env_vars="$pg_env_vars PGPORT='$pg_port'"
+    else
+        echo "No port variable found" >&2
+    fi
+    
+    # User priority: DATABASE_USERNAME, DATABASE_USER, DB_USER, DB_USERNAME, POSTGRES_USER, PG_USER
+    local user_vars=(DATABASE_USERNAME DATABASE_USER DB_USER DB_USERNAME POSTGRES_USER PG_USER)
+    local pg_user
+    pg_user=$(get_variable_by_priority "user" "${user_vars[@]}")
+    if [[ -n "$pg_user" ]]; then
+        pg_env_vars="$pg_env_vars PGUSER='$pg_user'"
+    else
+        echo "No user variable found" >&2
+    fi
+    
+    # Password priority: DATABASE_PASSWORD, DB_PASSWORD, POSTGRES_PASSWORD, PG_PASSWORD
+    local password_vars=(DATABASE_PASSWORD DB_PASSWORD POSTGRES_PASSWORD PG_PASSWORD)
+    local pg_password=""
+    for var in "${password_vars[@]}"; do
+        if [[ -n "${!var}" ]]; then
+            pg_password="${!var}"
+            echo "Using $var: $(mask_password "$pg_password")" >&2
+            break
+        fi
+    done
+    if [[ -n "$pg_password" ]]; then
+        pg_env_vars="$pg_env_vars PGPASSWORD='$pg_password'"
+    else
+        echo "No password variable found" >&2
+    fi
+    
+    # Database priority: DATABASE_NAME, DATABASE_DB, DB_DATABASE, DB_NAME, POSTGRES_DB, PG_DATABASE
+    local db_vars=(DATABASE_NAME DATABASE_DB DB_DATABASE DB_NAME POSTGRES_DB PG_DATABASE)
+    local pg_database
+    pg_database=$(get_variable_by_priority "database" "${db_vars[@]}")
+    if [[ -n "$pg_database" ]]; then
+        pg_env_vars="$pg_env_vars PGDATABASE='$pg_database'"
+    else
+        echo "No database variable found" >&2
+    fi
+    
+    echo "" >&2
+    # Execute psql with the environment variables
+    eval "$pg_env_vars psql"
+}
+
+main() {
+    local env_file=".env"
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -e|--env-file)
+                env_file="$2"
+                shift 2
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -v|--version)
+                echo "pgconnect version $VERSION"
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+        esac
+    done
+    
+    load_env_file "$env_file"
+    connect_postgres
+}
+
+main "$@"
