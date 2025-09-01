@@ -13,6 +13,7 @@ Connect to PostgreSQL using environment variables from .env file
 Options:
     -e, --env-file <file>    Specify custom .env file (default: .env)
     --no-env                Skip .env file and use shell environment variables
+    --pgcli                 Use pgcli instead of psql
     -d, --debug             Show debug output for connection variables
     -h, --help              Show this help message
     -v, --version           Show version information
@@ -30,6 +31,7 @@ Examples:
     pgc -e .env.staging             Use .env.staging file
     pgc -e .env.production          Use .env.production file
     pgc --no-env                    Use shell environment variables
+    pgc --pgcli                     Use pgcli instead of psql
     pgc -d                          Show debug output
     pgc "SELECT 1"                  Execute SQL command directly
     pgc -- -c "SELECT 1"           Execute SQL command (explicit)
@@ -108,7 +110,8 @@ mask_password() {
 
 connect_postgres() {
     local debug="$1"
-    shift
+    local use_pgcli="$2"
+    shift 2
     local psql_args=("$@")
     
     if [[ "$debug" == "true" ]]; then
@@ -124,7 +127,11 @@ connect_postgres() {
             echo "Using PostgreSQL URL (ignoring individual variables)" >&2
             echo "" >&2
         fi
-        psql "$pg_url" "${psql_args[@]}"
+        if [[ "$use_pgcli" == "true" ]]; then
+            pgcli "$pg_url" "${psql_args[@]}"
+        else
+            psql "$pg_url" "${psql_args[@]}"
+        fi
         return
     fi
     
@@ -181,13 +188,18 @@ connect_postgres() {
     if [[ "$debug" == "true" ]]; then
         echo "" >&2
     fi
-    # Execute psql with the environment variables and any additional arguments
-    psql "${psql_args[@]}"
+    # Execute psql or pgcli with the environment variables and any additional arguments
+    if [[ "$use_pgcli" == "true" ]]; then
+        pgcli "${psql_args[@]}"
+    else
+        psql "${psql_args[@]}"
+    fi
 }
 
 main() {
     local env_file=".env"
     local use_shell_env="false"
+    local use_pgcli="false"
     local debug="false"
     local psql_args=()
     local sql_command=""
@@ -200,6 +212,10 @@ main() {
                 ;;
             --no-env)
                 use_shell_env="true"
+                shift
+                ;;
+            --pgcli)
+                use_pgcli="true"
                 shift
                 ;;
             -d|--debug)
@@ -255,7 +271,7 @@ main() {
         load_env_file "$env_file"
     fi
     
-    connect_postgres "$debug" "${psql_args[@]}"
+    connect_postgres "$debug" "$use_pgcli" "${psql_args[@]}"
 }
 
 main "$@"

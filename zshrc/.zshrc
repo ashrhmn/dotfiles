@@ -198,7 +198,7 @@ alias laa="eza -la --group-directories-first --icons --color=always --absolute"
 alias lag="eza -la --group-directories-first --icons --color=always --git --git-repos-no-status"
 
 function pmgen(){
-  echo "module.exports = { apps: [{ name: '$1', script: '${@:2}', time: true, email: './app.log' }] };">ecosystem.config.cjs;
+  echo "module.exports = { apps: [{ name: '$1', script: '${@:2}', time: true, log_file: './app.log' }] };">ecosystem.config.cjs;
 }
 
 export PATH="$HOME/Library/Python/3.8/bin/:$PATH"
