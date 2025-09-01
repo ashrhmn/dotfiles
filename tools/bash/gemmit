@@ -29,8 +29,11 @@ if git diff --staged --quiet; then
     exit 1
 fi
 
-# Get staged changes
-staged_changes=$(git diff --staged -- . \
+# Create temporary file for diff in current working directory
+diff_file="./gemmit_diff_$(date +%s)_$$"
+
+# Write staged changes to temporary file
+git diff --staged -- . \
   ':(exclude)pnpm-lock.yaml' \
   ':(exclude)package-lock.json' \
   ':(exclude)yarn.lock' \
@@ -45,19 +48,15 @@ staged_changes=$(git diff --staged -- . \
   ':(exclude)node_modules/' \
   ':(exclude)target/' \
   ':(exclude)__pycache__/' \
-  ':(exclude).venv/'
-)
+  ':(exclude).venv/' > "$diff_file"
 
 # Create temporary file for commit message
 temp_file=$(mktemp)
 
-# Prepare the prompt with embedded data
-prompt="You are a git commit message generator. Here are the staged git changes and recent commit history:
+# Prepare the prompt with file path reference
+prompt="You are a git commit message generator. The staged git changes are saved in the file: $diff_file
 
-STAGED CHANGES:
-$staged_changes
-
-Generate ONLY the commit message following these guidelines:
+Please read that file and generate ONLY the commit message following these guidelines:
 
 1. Use conventional commit format: type(scope): description
 2. Types: feat, fix, refactor, docs, style, test, chore, perf, ci
@@ -81,4 +80,4 @@ fi
 git commit -e -F "$temp_file"
 
 # Clean up
-rm "$temp_file"
+rm "$temp_file" "$diff_file"
