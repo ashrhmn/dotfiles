@@ -5,3 +5,4 @@ dist
 build
 out
 .next
+/gemmit_diff_*

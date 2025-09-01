@@ -1,0 +1,264 @@
+#!/bin/bash
+
+set -e
+
+VERSION="1.0.0"
+
+usage() {
+    cat << EOF
+Usage: rdc [OPTIONS] [REDIS_COMMAND | -- REDIS_ARGS...]
+
+Connect to Redis using environment variables from .env file
+
+Options:
+    -e, --env-file <file>    Specify custom .env file (default: .env)
+    --no-env                Skip .env file and use shell environment variables
+    -d, --debug             Show debug output for connection variables
+    -h, --help              Show this help message
+    -v, --version           Show version information
+
+Environment Variables (in priority order):
+    URL:      REDIS_URL, REDIS_URI
+    Host:     REDIS_HOST, REDIS_HOSTNAME
+    Port:     REDIS_PORT
+    Password: REDIS_PASSWORD, REDIS_AUTH
+    Database: REDIS_DB, REDIS_DATABASE
+    Username: REDIS_USERNAME, REDIS_USER
+
+Examples:
+    rdc                             Use default .env file
+    rdc -e .env.staging             Use .env.staging file
+    rdc -e .env.production          Use .env.production file
+    rdc --no-env                    Use shell environment variables
+    rdc -d                          Show debug output
+    rdc "PING"                      Execute Redis command directly
+    rdc -- -c "PING"               Execute Redis command (explicit)
+    rdc -- --help                  Show redis-cli help
+
+Note:
+    - Script will error if specified .env file is not found
+    - Missing environment variables will be omitted (no error)
+    - If URL is found, individual host/port/user/password/database variables are ignored
+    - Connects using redis-cli with Redis environment variables
+    - Redis commands can be passed directly as arguments or after --
+    - Everything after -- is passed directly to redis-cli
+EOF
+}
+
+load_env_file() {
+    local env_file="$1"
+    
+    if [[ ! -f "$env_file" ]]; then
+        echo "Error: Environment file '$env_file' not found"
+        exit 1
+    fi
+    
+    # Read .env file and export variables
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip empty lines and comments
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        
+        # Extract key=value pairs
+        if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+            local key="${BASH_REMATCH[1]}"
+            local value="${BASH_REMATCH[2]}"
+            
+            # Remove surrounding quotes if present
+            value="${value#\"}"
+            value="${value%\"}"
+            value="${value#\'}"
+            value="${value%\'}"
+            
+            export "$key=$value"
+        fi
+    done < "$env_file"
+}
+
+get_variable_by_priority() {
+    local var_name="$1"
+    local debug="$2"
+    shift 2
+    local priority_list=("$@")
+    
+    for var in "${priority_list[@]}"; do
+        if [[ -n "${!var}" ]]; then
+            echo "${!var}"
+            if [[ "$debug" == "true" ]]; then
+                if [[ "$var_name" == "password" ]]; then
+                    echo "Using $var: $(mask_password "${!var}")" >&2
+                else
+                    echo "Using $var: ${!var}" >&2
+                fi
+            fi
+            return
+        fi
+    done
+}
+
+mask_password() {
+    local password="$1"
+    if [[ -z "$password" ]]; then
+        echo "no password"
+    elif [[ "$password" == "" ]]; then
+        echo "empty password"
+    else
+        echo "****"
+    fi
+}
+
+connect_redis() {
+    local debug="$1"
+    shift
+    local redis_args=("$@")
+    
+    if [[ "$debug" == "true" ]]; then
+        echo "Loading Redis connection variables:" >&2
+    fi
+    
+    # URL priority: REDIS_URL, REDIS_URI
+    local url_vars=(REDIS_URL REDIS_URI)
+    local redis_url
+    redis_url=$(get_variable_by_priority "url" "$debug" "${url_vars[@]}")
+    if [[ -n "$redis_url" ]]; then
+        if [[ "$debug" == "true" ]]; then
+            echo "Using Redis URL (ignoring individual variables)" >&2
+            echo "" >&2
+        fi
+        redis-cli -u "$redis_url" "${redis_args[@]}"
+        return
+    fi
+    
+    local cli_args=()
+    
+    # Host priority: REDIS_HOST, REDIS_HOSTNAME
+    local host_vars=(REDIS_HOST REDIS_HOSTNAME)
+    local redis_host
+    redis_host=$(get_variable_by_priority "host" "$debug" "${host_vars[@]}")
+    if [[ -n "$redis_host" ]]; then
+        cli_args+=("-h" "$redis_host")
+    elif [[ "$debug" == "true" ]]; then
+        echo "No host variable found" >&2
+    fi
+    
+    # Port priority: REDIS_PORT
+    local port_vars=(REDIS_PORT)
+    local redis_port
+    redis_port=$(get_variable_by_priority "port" "$debug" "${port_vars[@]}")
+    if [[ -n "$redis_port" ]]; then
+        cli_args+=("-p" "$redis_port")
+    elif [[ "$debug" == "true" ]]; then
+        echo "No port variable found" >&2
+    fi
+    
+    # Username priority: REDIS_USERNAME, REDIS_USER
+    local user_vars=(REDIS_USERNAME REDIS_USER)
+    local redis_user
+    redis_user=$(get_variable_by_priority "user" "$debug" "${user_vars[@]}")
+    if [[ -n "$redis_user" ]]; then
+        cli_args+=("--user" "$redis_user")
+    elif [[ "$debug" == "true" ]]; then
+        echo "No user variable found" >&2
+    fi
+    
+    # Password priority: REDIS_PASSWORD, REDIS_AUTH
+    local password_vars=(REDIS_PASSWORD REDIS_AUTH)
+    local redis_password
+    redis_password=$(get_variable_by_priority "password" "$debug" "${password_vars[@]}")
+    if [[ -n "$redis_password" ]]; then
+        cli_args+=("-a" "$redis_password")
+    elif [[ "$debug" == "true" ]]; then
+        echo "No password variable found" >&2
+    fi
+    
+    # Database priority: REDIS_DB, REDIS_DATABASE
+    local db_vars=(REDIS_DB REDIS_DATABASE)
+    local redis_database
+    redis_database=$(get_variable_by_priority "database" "$debug" "${db_vars[@]}")
+    if [[ -n "$redis_database" ]]; then
+        cli_args+=("-n" "$redis_database")
+    elif [[ "$debug" == "true" ]]; then
+        echo "No database variable found" >&2
+    fi
+    
+    if [[ "$debug" == "true" ]]; then
+        echo "" >&2
+    fi
+    
+    # Execute redis-cli with the constructed arguments and any additional arguments
+    redis-cli "${cli_args[@]}" "${redis_args[@]}"
+}
+
+main() {
+    local env_file=".env"
+    local use_shell_env="false"
+    local debug="false"
+    local redis_args=()
+    local redis_command=""
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -e|--env-file)
+                env_file="$2"
+                shift 2
+                ;;
+            --no-env)
+                use_shell_env="true"
+                shift
+                ;;
+            -d|--debug)
+                debug="true"
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -v|--version)
+                echo "rdc version $VERSION"
+                exit 0
+                ;;
+            --)
+                shift
+                redis_args=("$@")
+                break
+                ;;
+            -*)
+                echo "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                # First non-option argument is treated as Redis command
+                redis_command="$1"
+                shift
+                
+                # Check if next argument is --
+                if [[ $# -gt 0 && "$1" == "--" ]]; then
+                    shift
+                    redis_args=("$@")
+                else
+                    # Any remaining arguments are treated as additional Redis args
+                    redis_args=("$@")
+                fi
+                break
+                ;;
+        esac
+    done
+    
+    # If we have a Redis command, add it to the arguments
+    if [[ -n "$redis_command" ]]; then
+        redis_args=("$redis_command" "${redis_args[@]}")
+    fi
+    
+    if [[ "$use_shell_env" == "true" ]]; then
+        if [[ "$debug" == "true" ]]; then
+            echo "Using shell environment variables (skipping .env file)" >&2
+        fi
+    else
+        load_env_file "$env_file"
+    fi
+    
+    connect_redis "$debug" "${redis_args[@]}"
+}
+
+main "$@"
