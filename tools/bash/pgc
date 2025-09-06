@@ -14,6 +14,7 @@ Options:
     -e, --env-file <file>    Specify custom .env file (default: .env)
     --no-env                Skip .env file and use shell environment variables
     --pgcli                 Use pgcli instead of psql
+    -P, --no-pager          Disable pager (omit --pset pager=off flag)
     -d, --debug             Show debug output for connection variables
     -h, --help              Show this help message
     -v, --version           Show version information
@@ -111,7 +112,8 @@ mask_password() {
 connect_postgres() {
     local debug="$1"
     local use_pgcli="$2"
-    shift 2
+    local no_pager="$3"
+    shift 3
     local psql_args=("$@")
     
     if [[ "$debug" == "true" ]]; then
@@ -130,7 +132,11 @@ connect_postgres() {
         if [[ "$use_pgcli" == "true" ]]; then
             pgcli "$pg_url" "${psql_args[@]}"
         else
-            psql "$pg_url" "${psql_args[@]}"
+            if [[ "$no_pager" == "false" ]]; then
+                psql "$pg_url" --pset pager=off "${psql_args[@]}"
+            else
+                psql "$pg_url" "${psql_args[@]}"
+            fi
         fi
         return
     fi
@@ -192,7 +198,11 @@ connect_postgres() {
     if [[ "$use_pgcli" == "true" ]]; then
         pgcli "${psql_args[@]}"
     else
-        psql "${psql_args[@]}"
+        if [[ "$no_pager" == "false" ]]; then
+            psql --pset pager=off "${psql_args[@]}"
+        else
+            psql "${psql_args[@]}"
+        fi
     fi
 }
 
@@ -200,6 +210,7 @@ main() {
     local env_file=".env"
     local use_shell_env="false"
     local use_pgcli="false"
+    local no_pager="false"
     local debug="false"
     local psql_args=()
     local sql_command=""
@@ -216,6 +227,10 @@ main() {
                 ;;
             --pgcli)
                 use_pgcli="true"
+                shift
+                ;;
+            -P|--no-pager)
+                no_pager="true"
                 shift
                 ;;
             -d|--debug)
@@ -271,7 +286,7 @@ main() {
         load_env_file "$env_file"
     fi
     
-    connect_postgres "$debug" "$use_pgcli" "${psql_args[@]}"
+    connect_postgres "$debug" "$use_pgcli" "$no_pager" "${psql_args[@]}"
 }
 
 main "$@"
