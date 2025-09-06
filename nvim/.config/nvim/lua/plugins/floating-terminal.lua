@@ -165,6 +165,22 @@ return {
     vim.keymap.set({ "n", "t" }, "<C-g>", toggleClaude, { noremap = true, silent = true, desc = "Claude" })
 
     ---@diagnostic disable-next-line missing-fields
+    local opencodeTerm = fterm:new({
+      ft = "fterm_opencode",
+      cmd = "opencode --continue",
+      ---@diagnostic disable-next-line missing-fields
+      dimensions = {
+        height = 0.999,
+        width = 0.999,
+      },
+    })
+    local toggleOpencode = function()
+      opencodeTerm:toggle()
+    end
+    vim.api.nvim_create_user_command("Opencode", toggleOpencode, { bang = true })
+    vim.keymap.set({ "n", "t" }, "<C-f>", toggleOpencode, { noremap = true, silent = true, desc = "Opencode" })
+
+    ---@diagnostic disable-next-line missing-fields
     local pmStartTerm = fterm:new({
       ft = "fterm_pmStart",
       cmd = "pm2 start ecosystem.config.cjs",
