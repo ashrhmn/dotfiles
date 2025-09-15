@@ -7,8 +7,8 @@
 # --- Core model settings -----------------------------------------------------
 
 # Model to use (default: "gpt-5").
-# Examples: "gpt-5", "o3", "o4-mini", "codex-*".
-model = "gpt-5"
+# Examples: "gpt-5", "o3", "o4-mini", "codex-*", "gpt-5-codex".
+model = "gpt-5-codex"
 
 # Provider id from [model_providers] (default: "openai").
 # You may override the built-in OpenAI base URL via OPENAI_BASE_URL env var.
