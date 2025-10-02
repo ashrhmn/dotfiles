@@ -14,9 +14,6 @@ model = "gpt-5-codex"
 # You may override the built-in OpenAI base URL via OPENAI_BASE_URL env var.
 model_provider = "openai"
 
-# Reasoning effort for Responses API models (minimal|low|medium|high; default: "medium").
-model_reasoning_effort = "high"
-
 # Reasoning summary mode for o*/codex models (auto|concise|detailed|none; default: "auto").
 model_reasoning_summary = "auto"
 
@@ -173,6 +170,10 @@ experimental_use_exec_command_tool = false
 
 
 # --- MCP servers -------------------------------------------------------------
+
+[mcp_servers.context7]
+args = ["-y", "@upstash/context7-mcp", "--api-key", "ctx7sk-3dee12c7-1258-430d-9f89-8458d3a66bec"]
+command = "npx"
 
 # Define MCP servers (stdout/stdin transport). Unset by default.
 # [mcp_servers.server-name]

@@ -5,6 +5,7 @@
 
 # Parse arguments
 custom_date=""
+commit_message=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         --date=*)
@@ -15,9 +16,13 @@ while [[ $# -gt 0 ]]; do
             custom_date="$2"
             shift 2
             ;;
+        -m|--message)
+            commit_message="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: gemmit [--date=YYYY-MM-DDTHH:MM:SS]"
+            echo "Usage: gemmit [--date=YYYY-MM-DDTHH:MM:SS] [-m|--message \"commit message\"]"
             exit 1
             ;;
     esac
@@ -27,6 +32,18 @@ done
 if git diff --staged --quiet; then
     echo "Error: No staged changes to commit. Use 'git add' to stage changes first."
     exit 1
+fi
+
+# Set environment variables for custom date if provided
+if [[ -n "$custom_date" ]]; then
+    export GIT_AUTHOR_DATE="$custom_date"
+    export GIT_COMMITTER_DATE="$custom_date"
+fi
+
+# If message is provided, commit directly without AI generation
+if [[ -n "$commit_message" ]]; then
+    git commit -m "$commit_message"
+    exit 0
 fi
 
 # Create temporary file for diff in current working directory
@@ -69,12 +86,6 @@ IMPORTANT: Return ONLY the commit message. Do not include any prefix like 'Here 
 
 # Call gemini with the prepared prompt and save to temp file
 gemini -m "gemini-2.5-flash" -p "$prompt" > "$temp_file"
-
-# Set environment variables for custom date if provided
-if [[ -n "$custom_date" ]]; then
-    export GIT_AUTHOR_DATE="$custom_date"
-    export GIT_COMMITTER_DATE="$custom_date"
-fi
 
 # Open git commit editor with the generated message
 git commit -e -F "$temp_file"
