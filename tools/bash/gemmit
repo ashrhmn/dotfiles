@@ -85,7 +85,7 @@ Please read that file and generate ONLY the commit message following these guide
 IMPORTANT: Return ONLY the commit message. Do not include any prefix like 'Here is your commit message:' or wrap it in backticks. Just return the raw commit message text."
 
 # Call codex with the prepared prompt and save to temp file
-codex exec "$prompt" > "$temp_file"
+claude -p "$prompt" > "$temp_file"
 
 # Open git commit editor with the generated message
 git commit -e -F "$temp_file"
