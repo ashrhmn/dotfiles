@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Codex-generated commit message script
-# This script collects staged changes and recent logs, then feeds them to codex
+# ai-generated commit message script
+# This script collects staged changes and recent logs, then feeds them to ai
 
 # Parse arguments
 custom_date=""
@@ -84,7 +84,7 @@ Please read that file and generate ONLY the commit message following these guide
 
 IMPORTANT: Return ONLY the commit message. Do not include any prefix like 'Here is your commit message:' or wrap it in backticks. Just return the raw commit message text."
 
-# Call codex with the prepared prompt and save to temp file
+# Call ai with the prepared prompt and save to temp file
 claude -p "$prompt" > "$temp_file"
 
 # Open git commit editor with the generated message
