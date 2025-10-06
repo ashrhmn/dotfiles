@@ -302,3 +302,4 @@ alias claude="/home/ash/.claude/local/claude"
 
 # opencode
 export PATH=/home/ash/.opencode/bin:$PATH
+export PSQL_PAGER='pspg -X -s 16'
