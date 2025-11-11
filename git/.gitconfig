@@ -144,3 +144,5 @@
     # Auto-correct typos after 1 second
 [submodule]
 	recurse = true
+[net]
+	git-fetch-with-cli = true
