@@ -6,6 +6,7 @@
 # Parse arguments
 custom_date=""
 commit_message=""
+model_name="haiku"
 while [[ $# -gt 0 ]]; do
     case $1 in
         --date=*)
@@ -20,9 +21,13 @@ while [[ $# -gt 0 ]]; do
             commit_message="$2"
             shift 2
             ;;
+        --model)
+            model_name="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: gemmit [--date=YYYY-MM-DDTHH:MM:SS] [-m|--message \"commit message\"]"
+            echo "Usage: gemmit [--date=YYYY-MM-DDTHH:MM:SS] [-m|--message \"commit message\"] [--model MODEL]"
             exit 1
             ;;
     esac
@@ -71,21 +76,40 @@ git diff --staged -- . \
 temp_file=$(mktemp)
 
 # Prepare the prompt with file path reference
-prompt="You are a git commit message generator. The staged git changes are saved in the file: $diff_file
+prompt="CRITICAL: You are a git commit message generator in RAW OUTPUT MODE.
+Your ENTIRE response will be piped DIRECTLY into 'git commit -F'.
 
-Please read that file and generate ONLY the commit message following these guidelines:
+Read the diff from: $diff_file
 
-1. Use conventional commit format: type(scope): description
-2. Types: feat, fix, refactor, docs, style, test, chore, perf, ci
-3. Subject line: imperative mood, 50 chars max, no period
-4. If changes are complex, add a body explaining WHY and WHAT
-5. Focus on business logic and functionality, not just file changes
-6. Group related changes in bullet points if needed
+RULES:
+1. Character #1 of your response MUST be one of: f, r, d, s, t, c, p (the start of a commit type)
+2. NO preamble, analysis, description, or meta-commentary whatsoever
+3. Format: type(scope): subject\\n\\nbody with details
 
-IMPORTANT: Return ONLY the commit message. Do not include any prefix like 'Here is your commit message:' or wrap it in backticks. Just return the raw commit message text."
+FORBIDDEN (will break git):
+- \"The changes/diff shows...\"
+- \"Based on the diff...\"
+- \"I see that...\"
+- Any analysis before the commit message
+- Backticks, quotes, markdown formatting
+
+VALID OUTPUT:
+fix(auth): resolve login timeout issue
+
+Increase session timeout from 5m to 30m
+- Prevents premature logouts during long forms
+
+INVALID OUTPUT:
+The diff shows authentication changes in auth.ts and config.ts:
+- Modified timeout value
+- Updated session handling
+
+fix(auth): resolve login timeout issue
+
+YOUR RESPONSE STARTS NOW:"
 
 # Call ai with the prepared prompt and save to temp file
-claude -p "$prompt" > "$temp_file"
+claude --model "$model_name" -p "$prompt" > "$temp_file"
 
 # Open git commit editor with the generated message
 git commit -e -F "$temp_file"
