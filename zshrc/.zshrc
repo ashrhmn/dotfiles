@@ -257,6 +257,7 @@ debug_log "Zoxide initialized"
 # [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
 # eval "$(pyenv init -)"
 
+export PATH="/home/ash/.cargo/bin:$PATH"
 debug_log "Initializing fnm"
 eval "$(fnm env --use-on-cd --version-file-strategy=recursive)"
 debug_log "fnm initialized"
