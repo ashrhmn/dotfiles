@@ -72,7 +72,7 @@ approval_policy = "never"
 
 # OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
 sandbox_mode = "danger-full-access"
-model_reasoning_effort = "low"
+model_reasoning_effort = "high"
 
 # Extra settings when sandbox_mode = "workspace-write".
 [sandbox_workspace_write]
@@ -143,9 +143,12 @@ project_doc_max_bytes = 32768
 # Preferred auth method (chatgpt|apikey; default: chatgpt).
 preferred_auth_method = "chatgpt"
 
+[features]
+web_search_request = true
+
 # Enable built-in web search tool (alias: tools.web_search_request) (default: false).
-[tools]
-web_search = true
+# [tools]
+# web_search = true
 
 
 # --- Experimental / advanced -------------------------------------------------
