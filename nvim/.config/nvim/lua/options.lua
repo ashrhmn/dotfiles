@@ -1,5 +1,6 @@
 vim.cmd("let g:netrw_banner = 0")
 vim.cmd("let g:netrw_liststyle = 3")
+-- vim.cmd("set t_Co=24")
 
 local opt = vim.opt
 
