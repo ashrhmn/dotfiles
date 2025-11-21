@@ -25,6 +25,49 @@ end
 
 keymap.set("n", "<leader>hi", toggleInlayHints, { desc = "Toggle inlay hints" })
 
+local background_state_file = vim.fn.stdpath("data") .. "/background_state"
+
+local saveBackgroundState = function(state)
+  local file = io.open(background_state_file, "w")
+  if file then
+    file:write(state)
+    file:close()
+  end
+end
+
+local loadBackgroundState = function()
+  local file = io.open(background_state_file, "r")
+  if file then
+    local state = file:read("*a")
+    file:close()
+    if state == "light" then
+      vim.opt.background = "light"
+    elseif state == "dark" then
+      vim.opt.background = "dark"
+    end
+  end
+end
+
+local toggleBackground = function()
+  ---@diagnostic disable-next-line: undefined-field
+  local current = vim.opt.background:get()
+
+  if current == "light" then
+    vim.opt.background = "dark"
+    saveBackgroundState("dark")
+    vim.notify("Background: dark", vim.log.levels.INFO)
+  else
+    vim.opt.background = "light"
+    saveBackgroundState("light")
+    vim.notify("Background: light", vim.log.levels.INFO)
+  end
+end
+
+-- Load saved background state on startup
+loadBackgroundState()
+
+keymap.set("n", "<leader>bg", toggleBackground, { desc = "Toggle background (light/dark)" })
+
 --keymap.set('n', '<C-q>', ':qa<CR>',{desc='Quit All'})
 keymap.set("n", "<C-s>", ":w<CR>", { desc = "Save file" })
 keymap.set("n", "<leader>w", ":w<CR>", { desc = "Save file" })
