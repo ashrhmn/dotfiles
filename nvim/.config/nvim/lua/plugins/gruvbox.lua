@@ -1,6 +1,3 @@
-if true then
-  return {}
-end
 return {
   "ellisonleao/gruvbox.nvim",
   priority = 1000,
@@ -29,6 +26,5 @@ return {
       dim_inactive = false,
       transparent_mode = false,
     })
-    vim.cmd("colorscheme gruvbox")
   end,
 }

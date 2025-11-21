@@ -1,6 +1,3 @@
-if true then
-  return {}
-end
 return {
   "rebelot/kanagawa.nvim",
   lazy = false,
@@ -30,6 +27,5 @@ return {
         light = "lotus",
       },
     })
-    vim.cmd.colorscheme("kanagawa")
   end,
 }
