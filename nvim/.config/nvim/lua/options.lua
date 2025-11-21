@@ -25,7 +25,7 @@ opt.cursorline = true
 -- turn on termguicolors for tokyonight colorscheme to work
 -- (have to use iterm2 or any other true color terminal)
 opt.termguicolors = true
-opt.background = "light" -- colorschemes that can be light or dark will be made dark
+-- opt.background = "light" -- Removed: Let keymaps.lua handle background state persistence
 opt.signcolumn = "yes" -- show sign column so that text doesn't shift
 
 -- backspace
@@ -40,3 +40,30 @@ opt.splitbelow = true -- split horizontal window to the bottom
 
 -- turn off swapfile
 opt.swapfile = false
+
+-- Modern Neovim options
+opt.inccommand = "split" -- Live preview of substitute commands
+opt.smoothscroll = true -- Smoother scrolling (Neovim 0.10+)
+opt.virtualedit = "block" -- Better visual block editing
+opt.undofile = true -- Persistent undo across sessions
+opt.pumheight = 15 -- Limit completion menu height
+opt.updatetime = 250 -- Faster updatetime for better experience (default 4000)
+opt.timeoutlen = 300 -- Faster key sequence timeout
+
+-- Better diagnostic configuration
+vim.diagnostic.config({
+  virtual_text = {
+    prefix = "●",
+    spacing = 4,
+  },
+  signs = true,
+  underline = true,
+  update_in_insert = false,
+  severity_sort = true,
+  float = {
+    border = "rounded",
+    source = "always",
+    header = "",
+    prefix = "",
+  },
+})

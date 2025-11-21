@@ -12,6 +12,7 @@ return {
 		},
 		config = function()
 			local builtin = require("telescope.builtin")
+			local actions = require("telescope.actions")
 			local keymap = vim.keymap
 			keymap.set("n", "<leader><leader>", builtin.find_files, { desc = "Find Files" })
 			keymap.set("n", "<leader>fr", builtin.oldfiles, { desc = "Find Recent Files" })
@@ -41,6 +42,43 @@ return {
 						"--glob=!out/",
 						"--glob=!.next/",
 						"--glob=!.DS_Store",
+					},
+					-- Modern telescope improvements
+					layout_strategy = "horizontal",
+					layout_config = {
+						horizontal = {
+							prompt_position = "top",
+							preview_width = 0.55,
+							results_width = 0.8,
+						},
+						vertical = {
+							mirror = false,
+						},
+						width = 0.87,
+						height = 0.80,
+						preview_cutoff = 120,
+					},
+					sorting_strategy = "ascending",
+					winblend = 0,
+					border = true,
+					borderchars = { "─", "│", "─", "│", "╭", "╮", "╯", "╰" },
+					path_display = { "truncate" },
+					file_ignore_patterns = { "node_modules", ".git/" },
+					mappings = {
+						i = {
+							["<C-j>"] = actions.move_selection_next,
+							["<C-k>"] = actions.move_selection_previous,
+							["<C-n>"] = actions.cycle_history_next,
+							["<C-p>"] = actions.cycle_history_prev,
+							["<C-q>"] = actions.send_selected_to_qflist + actions.open_qflist,
+							["<Tab>"] = actions.toggle_selection + actions.move_selection_worse,
+							["<S-Tab>"] = actions.toggle_selection + actions.move_selection_better,
+						},
+						n = {
+							["<C-q>"] = actions.send_selected_to_qflist + actions.open_qflist,
+							["<Tab>"] = actions.toggle_selection + actions.move_selection_worse,
+							["<S-Tab>"] = actions.toggle_selection + actions.move_selection_better,
+						},
 					},
 				},
 				pickers = {

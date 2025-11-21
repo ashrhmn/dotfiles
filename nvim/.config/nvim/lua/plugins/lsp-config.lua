@@ -7,258 +7,74 @@ return {
   dependencies = {
     "hrsh7th/cmp-nvim-lsp",
     { "antosha417/nvim-lsp-file-operations", config = true },
-    { "folke/neodev.nvim", opts = {} },
+    { "folke/lazydev.nvim", ft = "lua", opts = {} }, -- Replaced neodev with lazydev
     "b0o/schemastore.nvim",
     "williamboman/mason-lspconfig.nvim",
   },
   config = function()
-    -- import lspconfig plugin
-    -- local lspconfig = require("lspconfig")
-
-    -- import mason_lspconfig plugin
-    -- local mason_lspconfig = require("mason-lspconfig")
-
-    -- import cmp-nvim-lsp plugin
     local cmp_nvim_lsp = require("cmp_nvim_lsp")
+    local keymap = vim.keymap
 
-    local keymap = vim.keymap -- for conciseness
-
+    -- LSP Keybindings on attach
     vim.api.nvim_create_autocmd("LspAttach", {
       group = vim.api.nvim_create_augroup("UserLspConfig", {}),
       callback = function(ev)
-        -- Buffer local mappings.
-        -- See `:help vim.lsp.*` for documentation on any of the below functions
-        local opts = { buffer = ev.buf, silent = false }
+        -- Navigation
+        keymap.set("n", "gR", "<cmd>Telescope lsp_references<CR>", { buffer = ev.buf, desc = "Show LSP references" })
+        keymap.set("n", "gD", vim.lsp.buf.declaration, { buffer = ev.buf, desc = "Go to declaration" })
+        keymap.set("n", "gd", "<cmd>Telescope lsp_definitions<CR>", { buffer = ev.buf, desc = "Show LSP definitions" })
+        keymap.set(
+          "n",
+          "gi",
+          "<cmd>Telescope lsp_implementations<CR>",
+          { buffer = ev.buf, desc = "Show LSP implementations" }
+        )
+        keymap.set(
+          "n",
+          "gt",
+          "<cmd>Telescope lsp_type_definitions<CR>",
+          { buffer = ev.buf, desc = "Show LSP type definitions" }
+        )
 
-        -- set keybinds
-        opts.desc = "Show LSP references"
-        keymap.set("n", "gR", "<cmd>Telescope lsp_references<CR>", opts) -- show definition, references
+        -- Actions
+        keymap.set(
+          { "n", "v" },
+          "<leader>ca",
+          vim.lsp.buf.code_action,
+          { buffer = ev.buf, desc = "See available code actions" }
+        )
+        keymap.set("n", "<leader>rn", vim.lsp.buf.rename, { buffer = ev.buf, desc = "Smart rename" })
 
-        opts.desc = "Go to declaration"
-        keymap.set("n", "gD", vim.lsp.buf.declaration, opts) -- go to declaration
+        -- Diagnostics
+        keymap.set(
+          "n",
+          "<leader>D",
+          "<cmd>Telescope diagnostics bufnr=0<CR>",
+          { buffer = ev.buf, desc = "Show buffer diagnostics" }
+        )
+        keymap.set("n", "<leader>d", vim.diagnostic.open_float, { buffer = ev.buf, desc = "Show line diagnostics" })
+        keymap.set("n", "[d", vim.diagnostic.goto_prev, { buffer = ev.buf, desc = "Go to previous diagnostic" })
+        keymap.set("n", "]d", vim.diagnostic.goto_next, { buffer = ev.buf, desc = "Go to next diagnostic" })
 
-        opts.desc = "Show LSP definitions"
-        keymap.set("n", "gd", "<cmd>Telescope lsp_definitions<CR>", opts) -- show lsp definitions
+        -- Documentation
+        keymap.set("n", "K", vim.lsp.buf.hover, { buffer = ev.buf, desc = "Show hover documentation" })
 
-        opts.desc = "Show LSP implementations"
-        keymap.set("n", "gi", "<cmd>Telescope lsp_implementations<CR>", opts) -- show lsp implementations
-
-        opts.desc = "Show LSP type definitions"
-        keymap.set("n", "gt", "<cmd>Telescope lsp_type_definitions<CR>", opts) -- show lsp type definitions
-
-        opts.desc = "See available code actions"
-        keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, opts) -- see available code actions, in visual mode will apply to selection
-
-        opts.desc = "Smart rename"
-        keymap.set("n", "<leader>rn", vim.lsp.buf.rename, opts) -- smart rename
-
-        opts.desc = "Show buffer diagnostics"
-        keymap.set("n", "<leader>D", "<cmd>Telescope diagnostics bufnr=0<CR>", opts) -- show  diagnostics for file
-
-        opts.desc = "Show line diagnostics"
-        keymap.set("n", "<leader>d", vim.diagnostic.open_float, opts) -- show diagnostics for line
-
-        opts.desc = "Go to previous diagnostic"
-        keymap.set("n", "[d", vim.diagnostic.goto_prev, opts) -- jump to previous diagnostic in buffer
-
-        opts.desc = "Go to next diagnostic"
-        keymap.set("n", "]d", vim.diagnostic.goto_next, opts) -- jump to next diagnostic in buffer
-
-        opts.desc = "Show documentation for what is under cursor"
-        keymap.set("n", "K", vim.lsp.buf.hover, opts) -- show documentation for what is under cursor
-
-        opts.desc = "Restart LSP"
-        keymap.set("n", "<leader>rs", ":LspRestart<CR>", opts) -- mapping to restart lsp if necessary
+        -- Restart LSP
+        keymap.set("n", "<leader>rs", ":LspRestart<CR>", { buffer = ev.buf, desc = "Restart LSP" })
       end,
     })
 
-    -- used to enable autocompletion (assign to every lsp server config)
-    -- local capabilities = cmp_nvim_lsp.default_capabilities()
+    -- Capabilities for autocompletion
     local capabilities = vim.lsp.protocol.make_client_capabilities()
     capabilities = vim.tbl_deep_extend("force", capabilities, cmp_nvim_lsp.default_capabilities())
 
-    -- Change the Diagnostic symbols in the sign column (gutter)
-    -- (not in youtube nvim video)
-    local signs = { Error = " ", Warn = " ", Hint = "󰠠 ", Info = " " }
+    -- Diagnostic symbols in the sign column
+    local signs = { Error = " ", Warn = " ", Hint = "󰠠 ", Info = " " }
     for type, icon in pairs(signs) do
       local hl = "DiagnosticSign" .. type
       vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = "" })
     end
 
-    -- local function organize_go_imports()
-    --   -- vim.lsp.buf.execute_command({
-    --   --   command = "_gopls.organizeImports",
-    --   --   arguments = { vim.api.nvim_buf_get_name(0) },
-    --   --   title = "Organize Imports",
-    --   -- })
-    --   vim.lsp.buf.format()
-    --   vim.lsp.buf.code_action({ context = { only = { "source.organizeImports" } }, apply = true })
-    --   vim.lsp.buf.code_action({ context = { only = { "source.fixAll" } }, apply = true })
-    -- end
-    --
-    -- local function organize_ts_imports()
-    --   vim.lsp.buf.execute_command({
-    --     command = "_typescript.organizeImports",
-    --     arguments = { vim.api.nvim_buf_get_name(0) },
-    --     title = "Organize Imports",
-    --   })
-    -- end
-
-    -- mason_lspconfig.setup_handlers({
-    --   -- default handler for installed servers
-    --   function(server_name)
-    --     if server_name == "tsserver" then
-    --       server_name = "ts_ls"
-    --     end
-    --     lspconfig[server_name].setup({
-    --       capabilities = capabilities,
-    --     })
-    --   end,
-    --   ["gopls"] = function()
-    --     -- configure graphql language server
-    --     lspconfig["gopls"].setup({
-    --       capabilities = capabilities,
-    --       commands = {
-    --         OrganizeImports = {
-    --           organize_go_imports,
-    --           description = "Organize Imports",
-    --         },
-    --       },
-    --     })
-    --   end,
-    --
-    --   ["ts_ls"] = function()
-    --     lspconfig["ts_ls"].setup({
-    --       capabilities = capabilities,
-    --       -- on_attach = function(client, bufnr)
-    --       --   vim.lsp.inlay_hint.enable(true)
-    --       -- end,
-    --       init_options = {
-    --         hostInfo = "neovim",
-    --         preferences = {
-    --           importModuleSpecifierPreference = "non-relative",
-    --           includeInlayParameterNameHints = "all",
-    --           includeInlayParameterNameHintsWhenArgumentMatchesName = false,
-    --           includeInlayFunctionParameterTypeHints = false,
-    --           includeInlayVariableTypeHints = false,
-    --           includeInlayVariableTypeHintsWhenTypeMatchesName = false,
-    --           includeInlayPropertyDeclarationTypeHints = false,
-    --           includeInlayFunctionLikeReturnTypeHints = false,
-    --           includeInlayEnumMemberValueHints = false,
-    --         },
-    --       },
-    --       commands = {
-    --         OrganizeImports = {
-    --           organize_ts_imports,
-    --           description = "Organize Imports",
-    --         },
-    --       },
-    --     })
-    --   end,
-    --
-    --   ["svelte"] = function()
-    --     -- configure svelte server
-    --     lspconfig["svelte"].setup({
-    --       capabilities = capabilities,
-    --       on_attach = function(client, bufnr)
-    --         vim.api.nvim_create_autocmd("BufWritePost", {
-    --           pattern = { "*.js", "*.ts" },
-    --           callback = function(ctx)
-    --             -- Here use ctx.match instead of ctx.file
-    --             client.notify("$/onDidChangeTsOrJsFile", { uri = ctx.match })
-    --           end,
-    --         })
-    --       end,
-    --     })
-    --   end,
-    --   ["graphql"] = function()
-    --     -- configure graphql language server
-    --     lspconfig["graphql"].setup({
-    --       capabilities = capabilities,
-    --       filetypes = { "graphql", "gql", "svelte", "typescriptreact", "javascriptreact" },
-    --     })
-    --   end,
-    --   ["emmet_ls"] = function()
-    --     -- configure emmet language server
-    --     lspconfig["emmet_ls"].setup({
-    --       capabilities = capabilities,
-    --       filetypes = {
-    --         "html",
-    --         "typescriptreact",
-    --         "javascriptreact",
-    --         "css",
-    --         "sass",
-    --         "scss",
-    --         "less",
-    --         "svelte",
-    --       },
-    --     })
-    --   end,
-    --   ["lua_ls"] = function()
-    --     -- configure lua server (with special settings)
-    --     lspconfig["lua_ls"].setup({
-    --       capabilities = capabilities,
-    --       settings = {
-    --         Lua = {
-    --           -- make the language server recognize "vim" global
-    --           diagnostics = {
-    --             globals = { "vim" },
-    --           },
-    --           completion = {
-    --             callSnippet = "Replace",
-    --           },
-    --         },
-    --       },
-    --     })
-    --   end,
-    --   ["yamlls"] = function()
-    --     lspconfig["yamlls"].setup({
-    --       capabilities = capabilities,
-    --       settings = {
-    --         yaml = {
-    --           schemaStore = {
-    --             -- You must disable built-in schemaStore support if you want to use
-    --             -- this plugin and its advanced options like `ignore`.
-    --             enable = false,
-    --             -- Avoid TypeError: Cannot read properties of undefined (reading 'length')
-    --             url = "",
-    --           },
-    --           schemas = require("schemastore").yaml.schemas(),
-    --         },
-    --       },
-    --     })
-    --   end,
-    --   ["jsonls"] = function()
-    --     lspconfig["jsonls"].setup({
-    --       capabilities = capabilities,
-    --       settings = {
-    --         json = {
-    --           schemas = require("schemastore").json.schemas(),
-    --           validate = { enable = true },
-    --         },
-    --       },
-    --     })
-    --   end,
-    --   ["tailwindcss"] = function()
-    --     lspconfig["tailwindcss"].setup({
-    --       capabilities = capabilities,
-    --       filetypes = { "templ", "astro", "javascript", "typescript", "react", "svelte", "vue", "html" },
-    --       settings = {
-    --         tailwindCSS = {
-    --           includeLanguages = {
-    --             templ = "html",
-    --           },
-    --         },
-    --       },
-    --     })
-    --   end,
-    --   ["omnisharp"] = function()
-    --     lspconfig["omnisharp"].setup({
-    --       capabilities = capabilities,
-    --       cmd = { "dotnet", "/opt/homebrew/Cellar/omnisharp/1.35.3/bin/omnisharp/OmniSharp.LanguageServerProtocol.dll" },
-    --       filetypes = { "csharp" },
-    --     })
-    --   end,
-    -- })
+    -- Note: LSP server configurations are handled in mason.lua
   end,
 }
