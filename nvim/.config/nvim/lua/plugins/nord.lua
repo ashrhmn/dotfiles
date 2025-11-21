@@ -1,6 +1,6 @@
 return {
   "shaunsingh/nord.nvim",
-  lazy = false,
+  lazy = true,
   priority = 1000,
   config = function()
     vim.g.nord_contrast = true

@@ -1,6 +1,6 @@
 return {
   "drewtempelmeyer/palenight.vim",
-  lazy = false,
+  lazy = true,
   priority = 1000,
   config = function()
     vim.g.palenight_terminal_italics = 1

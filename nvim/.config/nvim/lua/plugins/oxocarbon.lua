@@ -1,5 +1,5 @@
 return {
   "nyoom-engineering/oxocarbon.nvim",
-  lazy = false,
+  lazy = true,
   priority = 1000,
 }

@@ -1,5 +1,5 @@
 return {
   "savq/melange-nvim",
-  lazy = false,
+  lazy = true,
   priority = 1000,
 }

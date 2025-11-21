@@ -1,6 +1,6 @@
 return {
   "bluz71/vim-nightfly-guicolors",
-  lazy = false,
+  lazy = true,
   priority = 1000,
   config = function()
     vim.g.nightflyItalics = true
