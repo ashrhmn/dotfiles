@@ -64,6 +64,9 @@ keymap.set("n", "<leader>tf", "<cmd>tabnew %<CR>", { desc = "Open current buffer
 -- keymap.set("t", "<ESC>", "<C-\\><C-n>", { noremap = true, desc = "Exit terminal mode" })
 keymap.set("t", "<M-ESC>", "<C-\\><C-n>", { noremap = true, desc = "Exit terminal mode" })
 
+-- LSP signature help in insert mode
+keymap.set("i", "<C-s>", vim.lsp.buf.signature_help, { desc = "LSP signature help" })
+
 -- Update clipboard
 vim.api.nvim_create_user_command("SyncClipboard", function()
   -- Calculate 80% of editor dimensions
