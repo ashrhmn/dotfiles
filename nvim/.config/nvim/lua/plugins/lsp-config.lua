@@ -68,11 +68,11 @@ return {
     local capabilities = vim.lsp.protocol.make_client_capabilities()
     capabilities = vim.tbl_deep_extend("force", capabilities, cmp_nvim_lsp.default_capabilities())
 
-    -- Diagnostic symbols in the sign column
+    -- Diagnostic symbols in the sign column with high priority
     local signs = { Error = " ", Warn = " ", Hint = "󰠠 ", Info = " " }
     for type, icon in pairs(signs) do
       local hl = "DiagnosticSign" .. type
-      vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = "" })
+      vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = "", priority = 10 })
     end
 
     -- Note: LSP server configurations are handled in mason.lua

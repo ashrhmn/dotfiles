@@ -56,7 +56,7 @@ vim.diagnostic.config({
     prefix = "●",
     spacing = 4,
   },
-  signs = true,
+  signs = false, -- Disabled to prevent UI shifts in terminal
   underline = true,
   update_in_insert = false,
   severity_sort = true,
