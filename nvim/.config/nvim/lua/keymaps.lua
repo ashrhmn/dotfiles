@@ -67,6 +67,14 @@ keymap.set("t", "<M-ESC>", "<C-\\><C-n>", { noremap = true, desc = "Exit termina
 -- LSP signature help in insert mode
 keymap.set("i", "<C-s>", vim.lsp.buf.signature_help, { desc = "LSP signature help" })
 
+-- Enhanced clipboard integration
+local clipboard_integration = require("clipboard-integration")
+
+-- Manual clipboard sync
+keymap.set("n", "<leader>cs", function()
+  clipboard_integration.sync()
+end, { desc = "Manually sync clipboard to /tmp/clipboard" })
+
 -- Update clipboard
 vim.api.nvim_create_user_command("SyncClipboard", function()
   -- Calculate 80% of editor dimensions
@@ -102,11 +110,9 @@ vim.api.nvim_create_user_command("SyncClipboard", function()
     if vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_win_close(win, true)
     end
-    -- Set clipboard register if we got content
+    -- Enhanced clipboard sync with file storage
     if content and content ~= "" then
-      vim.fn.setreg("+", content)
-      vim.fn.setreg("*", content)
-      vim.notify("Clipboard synced: " .. string.len(content) .. " characters", vim.log.levels.INFO)
+      clipboard_integration.enhanced_sync_clipboard(content)
     else
       vim.notify("No content pasted", vim.log.levels.WARN)
     end

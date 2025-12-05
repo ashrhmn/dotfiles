@@ -25,6 +25,9 @@ require("options")
 -- Set KeyMaps
 require("keymaps")
 
+-- Setup Clipboard Integration
+require("clipboard-integration").setup()
+
 -- Setup Lazy Plugins
 require("lazy").setup("plugins", { change_detection = { notify = false } })
 end
