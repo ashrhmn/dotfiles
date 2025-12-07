@@ -14,7 +14,7 @@ opt.expandtab = true -- expand tab to spaces
 opt.autoindent = true -- copy indent from current line when starting new one
 opt.scrolloff = 10 -- start scrolling when 10 lines from top/bottom
 
-opt.wrap = true
+opt.wrap = false
 
 -- search settings
 opt.ignorecase = true -- ignore case when searching

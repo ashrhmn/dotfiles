@@ -23,7 +23,14 @@ local toggleInlayHints = function()
   end
 end
 
+local toggleWrap = function()
+  vim.opt.wrap = not vim.opt.wrap
+  local status = vim.opt.wrap and "enabled" or "disabled"
+  vim.notify("Line wrap " .. status, vim.log.levels.INFO)
+end
+
 keymap.set("n", "<leader>hi", toggleInlayHints, { desc = "Toggle inlay hints" })
+keymap.set("n", "<leader>tw", toggleWrap, { desc = "Toggle line wrap" })
 
 -- Theme and background management
 local themeSwitcher = require("theme-switcher")
