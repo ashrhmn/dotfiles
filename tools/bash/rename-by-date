@@ -25,7 +25,8 @@ Examples:
     rename-by-date ~/Videos
 
 Note:
-    Files without date metadata will be skipped.
+    Tries DateTimeOriginal/CreateDate first, falls back to GPS timestamp if needed.
+    Files without any date metadata will be skipped.
     Files starting with ._ (macOS resource forks) will be skipped.
     Existing files with the same name will be avoided with numeric suffixes.
 EOF
@@ -92,11 +93,26 @@ if ! command -v exiftool &> /dev/null; then
 fi
 
 extract_date() {
-    exiftool -DateTimeOriginal -CreateDate -MediaCreateDate -d "%Y:%m:%d %H:%M:%S" "$1" 2>/dev/null | 
+    local file="$1"
+    local date_str=""
+    
+    # Try standard EXIF date fields first
+    date_str=$(exiftool -DateTimeOriginal -CreateDate -MediaCreateDate -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null | 
                grep -E "(Date/Time Original|Create Date|Media Create Date)" | 
                head -1 | 
                awk -F': ' '{print $2}' | 
-               grep -v "^0000:00:00" | head -1 || true
+               grep -v "^0000:00:00" | head -1 || true)
+    
+    # If no standard date found, try GPS timestamp as fallback
+    if [[ -z "$date_str" ]]; then
+        date_str=$(exiftool -GPSDateTime "$file" 2>/dev/null | 
+                   grep "GPS Date/Time" | 
+                   head -1 | 
+                   awk -F': ' '{print $2}' | 
+                   sed 's/Z$//' || true)
+    fi
+    
+    echo "$date_str"
 }
 
 format_date() {
