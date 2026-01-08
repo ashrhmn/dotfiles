@@ -130,7 +130,13 @@ process_file() {
     base_name=$(basename "$file_path")
     extension="${base_name##*.}"
     
-    if [[ "$base_name" == ._* ]] || [[ "$base_name" == .* ]]; then
+    # Skip macOS resource forks (._filename) but allow extension-only files (.JPG, .PNG, etc)
+    if [[ "$base_name" == ._* ]]; then
+        return 0
+    fi
+    
+    # Skip hidden dot files (but not extension-only files like .JPG)
+    if [[ "$base_name" == .* ]] && [[ "$base_name" != ".$extension" ]]; then
         return 0
     fi
     
