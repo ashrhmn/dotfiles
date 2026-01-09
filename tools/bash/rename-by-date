@@ -16,7 +16,7 @@ Options:
     --version, -v       Show version information
 
 Supported formats:
-    Images: .jpg, .jpeg, .png, .gif, .bmp, .tiff, .webp
+    Images: .jpg, .jpeg, .png, .gif, .bmp, .tiff, .webp, .dng
     Videos: .mp4, .mov, .avi, .mkv, .m4v, .3gp
 
 Examples:
@@ -25,8 +25,8 @@ Examples:
     rename-by-date ~/Videos
 
 Note:
-    Tries DateTimeOriginal/CreateDate first, falls back to GPS timestamp if needed.
-    Files without any date metadata will be skipped.
+    Date extraction priority: DateTimeOriginal -> GPS timestamp -> CreateDate -> 
+    ModifyDate -> File modification date (as last resort).
     Files starting with ._ (macOS resource forks) will be skipped.
     Existing files with the same name will be avoided with numeric suffixes.
 EOF
@@ -96,20 +96,47 @@ extract_date() {
     local file="$1"
     local date_str=""
     
-    # Try standard EXIF date fields first
-    date_str=$(exiftool -DateTimeOriginal -CreateDate -MediaCreateDate -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null | 
-               grep -E "(Date/Time Original|Create Date|Media Create Date)" | 
+    # 1. Try DateTimeOriginal first (most accurate - when photo was taken)
+    date_str=$(exiftool -DateTimeOriginal -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null | 
+               grep "Date/Time Original" | 
                head -1 | 
                awk -F': ' '{print $2}' | 
                grep -v "^0000:00:00" | head -1 || true)
     
-    # If no standard date found, try GPS timestamp as fallback
+    # 2. If no DateTimeOriginal, try GPS timestamp (highly reliable, from satellites)
     if [[ -z "$date_str" ]]; then
         date_str=$(exiftool -GPSDateTime "$file" 2>/dev/null | 
                    grep "GPS Date/Time" | 
                    head -1 | 
                    awk -F': ' '{print $2}' | 
                    sed 's/Z$//' || true)
+    fi
+    
+    # 3. If no GPS timestamp, try CreateDate
+    if [[ -z "$date_str" ]]; then
+        date_str=$(exiftool -CreateDate -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null | 
+                   grep "Create Date" | 
+                   head -1 | 
+                   awk -F': ' '{print $2}' | 
+                   grep -v "^0000:00:00" | head -1 || true)
+    fi
+    
+    # 4. If no CreateDate, try ModifyDate (EXIF metadata)
+    if [[ -z "$date_str" ]]; then
+        date_str=$(exiftool -ModifyDate -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null | 
+                   grep "Modify Date" | 
+                   head -1 | 
+                   awk -F': ' '{print $2}' | 
+                   grep -v "^0000:00:00" | head -1 || true)
+    fi
+    
+    # 5. Last resort: use file modification date (file system timestamp)
+    if [[ -z "$date_str" ]]; then
+        date_str=$(exiftool -FileModifyDate -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null | 
+                   grep "File Modification Date" | 
+                   head -1 | 
+                   awk -F': ' '{print $2}' | 
+                   sed 's/+.*$//' | sed 's/-.*$//' || true)
     fi
     
     echo "$date_str"
@@ -194,7 +221,7 @@ main() {
     done < <(find "$TARGET_DIR" -type f ! -name "._*" \( \
         -iname "*.jpg" -o -iname "*.jpeg" -o \
         -iname "*.png" -o -iname "*.gif" -o \
-        -iname "*.bmp" -o -iname "*.tiff" -o -iname "*.webp" -o \
+        -iname "*.bmp" -o -iname "*.tiff" -o -iname "*.webp" -o -iname "*.dng" -o \
         -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" -o \
         -iname "*.mkv" -o -iname "*.m4v" -o -iname "*.3gp" \
     \) -print0)
