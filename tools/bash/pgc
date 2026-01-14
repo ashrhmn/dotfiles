@@ -16,6 +16,8 @@ Options:
     --pgcli                 Use pgcli instead of psql
     --no-pager              Disable pager (add --pset pager=off flag)
     --json                  Output results as JSON array (auto-disables pager)
+    --csv                   Output results as CSV (auto-disables pager)
+    -w, --write             Allow write operations (default is read-only)
     -d, --debug             Show debug output for connection variables
     -h, --help              Show this help message
     -v, --version           Show version information
@@ -29,23 +31,21 @@ Environment Variables (in priority order):
     Database: DATABASE_NAME, DATABASE_DB, DB_DATABASE, DB_NAME, POSTGRES_DB, PG_DATABASE, PGDATABASE
 
 Examples:
-    pgc                             Use default .env file
-    pgc -e .env.staging             Use .env.staging file
-    pgc -e .env.production          Use .env.production file
-    pgc --no-env                    Use shell environment variables
-    pgc --pgcli                     Use pgcli instead of psql
-    pgc -d                          Show debug output
-    pgc "SELECT 1"                  Execute SQL command directly
+    pgc                               Open interactive session (read-only)
+    pgc "SELECT * FROM users"         Execute query (read-only)
     pgc --json "SELECT * FROM users"  Get results as JSON array
-    pgc -- -c "SELECT 1"           Execute SQL command (explicit)
-    pgc -- --help                  Show psql help
+    pgc --csv "SELECT * FROM users"   Get results as CSV
+    pgc -w "UPDATE users SET ..."     Execute write query
+    pgc -e .env.production            Use .env.production file
+    pgc --pgcli                       Use pgcli instead of psql
+    pgc -d                            Show debug output
+    pgc -- --help                     Show psql help
 
 Note:
+    - Default mode is read-only to prevent accidental writes
+    - Use -w or --write to allow INSERT/UPDATE/DELETE/DROP operations
     - Script will error if specified .env file is not found
-    - Missing environment variables will be omitted (no error)
     - If URL is found, individual host/port/user/password/database variables are ignored
-    - Connects using psql with PostgreSQL environment variables
-    - SQL commands can be passed directly as arguments or after --
     - Everything after -- is passed directly to psql
 EOF
 }
@@ -214,6 +214,8 @@ main() {
     local use_pgcli="false"
     local no_pager="false"
     local json_output="false"
+    local csv_output="false"
+    local allow_write="false"
     local debug="false"
     local psql_args=()
     local sql_command=""
@@ -239,6 +241,15 @@ main() {
             --json)
                 json_output="true"
                 no_pager="true"
+                shift
+                ;;
+            --csv)
+                csv_output="true"
+                no_pager="true"
+                shift
+                ;;
+            -w|--write)
+                allow_write="true"
                 shift
                 ;;
             -d|--debug)
@@ -287,10 +298,16 @@ main() {
             # Wrap query with json_agg for JSON output
             sql_command="SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) FROM (${sql_command}) t"
             psql_args=("-t" "-A" "-c" "$sql_command" "${psql_args[@]}")
-            no_pager="true"
+        elif [[ "$csv_output" == "true" ]]; then
+            psql_args=("--csv" "-c" "$sql_command" "${psql_args[@]}")
         else
             psql_args=("-c" "$sql_command" "${psql_args[@]}")
         fi
+    fi
+
+    # Set read-only mode unless --write is specified
+    if [[ "$allow_write" == "false" ]]; then
+        export PGOPTIONS="-c default_transaction_read_only=on"
     fi
     
     if [[ "$use_shell_env" == "true" ]]; then
