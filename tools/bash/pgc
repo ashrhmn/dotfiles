@@ -281,16 +281,16 @@ main() {
         esac
     done
     
-    # If we have a SQL command, convert it to -c format and auto-disable pager
+    # If we have a SQL command, convert it to -c format
     if [[ -n "$sql_command" ]]; then
         if [[ "$json_output" == "true" ]]; then
             # Wrap query with json_agg for JSON output
             sql_command="SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) FROM (${sql_command}) t"
             psql_args=("-t" "-A" "-c" "$sql_command" "${psql_args[@]}")
+            no_pager="true"
         else
             psql_args=("-c" "$sql_command" "${psql_args[@]}")
         fi
-        no_pager="true"
     fi
     
     if [[ "$use_shell_env" == "true" ]]; then
