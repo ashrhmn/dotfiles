@@ -14,7 +14,8 @@ Options:
     -e, --env-file <file>    Specify custom .env file (default: .env)
     --no-env                Skip .env file and use shell environment variables
     --pgcli                 Use pgcli instead of psql
-    -P, --no-pager          Disable pager (omit --pset pager=off flag)
+    --no-pager              Disable pager (add --pset pager=off flag)
+    --json                  Output results as JSON array (auto-disables pager)
     -d, --debug             Show debug output for connection variables
     -h, --help              Show this help message
     -v, --version           Show version information
@@ -35,6 +36,7 @@ Examples:
     pgc --pgcli                     Use pgcli instead of psql
     pgc -d                          Show debug output
     pgc "SELECT 1"                  Execute SQL command directly
+    pgc --json "SELECT * FROM users"  Get results as JSON array
     pgc -- -c "SELECT 1"           Execute SQL command (explicit)
     pgc -- --help                  Show psql help
 
@@ -132,7 +134,7 @@ connect_postgres() {
         if [[ "$use_pgcli" == "true" ]]; then
             pgcli "$pg_url" "${psql_args[@]}"
         else
-            if [[ "$no_pager" == "false" ]]; then
+            if [[ "$no_pager" == "true" ]]; then
                 psql "$pg_url" --pset pager=off "${psql_args[@]}"
             else
                 psql "$pg_url" "${psql_args[@]}"
@@ -198,7 +200,7 @@ connect_postgres() {
     if [[ "$use_pgcli" == "true" ]]; then
         pgcli "${psql_args[@]}"
     else
-        if [[ "$no_pager" == "false" ]]; then
+        if [[ "$no_pager" == "true" ]]; then
             psql --pset pager=off "${psql_args[@]}"
         else
             psql "${psql_args[@]}"
@@ -211,6 +213,7 @@ main() {
     local use_shell_env="false"
     local use_pgcli="false"
     local no_pager="false"
+    local json_output="false"
     local debug="false"
     local psql_args=()
     local sql_command=""
@@ -229,7 +232,12 @@ main() {
                 use_pgcli="true"
                 shift
                 ;;
-            -P|--no-pager)
+            --no-pager)
+                no_pager="true"
+                shift
+                ;;
+            --json)
+                json_output="true"
                 no_pager="true"
                 shift
                 ;;
@@ -273,9 +281,16 @@ main() {
         esac
     done
     
-    # If we have a SQL command, convert it to -c format
+    # If we have a SQL command, convert it to -c format and auto-disable pager
     if [[ -n "$sql_command" ]]; then
-        psql_args=("-c" "$sql_command" "${psql_args[@]}")
+        if [[ "$json_output" == "true" ]]; then
+            # Wrap query with json_agg for JSON output
+            sql_command="SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) FROM (${sql_command}) t"
+            psql_args=("-t" "-A" "-c" "$sql_command" "${psql_args[@]}")
+        else
+            psql_args=("-c" "$sql_command" "${psql_args[@]}")
+        fi
+        no_pager="true"
     fi
     
     if [[ "$use_shell_env" == "true" ]]; then
