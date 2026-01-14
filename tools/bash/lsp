@@ -1,0 +1,191 @@
+#!/bin/bash
+
+set -e
+
+VERSION="1.0.0"
+
+usage() {
+    cat << EOF
+Usage: lsp [OPTIONS] [PORT...]
+
+List what's using a port, or find free ports
+
+Commands:
+    lsp 3000                    Show what's using port 3000
+    lsp 3000 5432 8080          Check multiple ports
+    lsp -f 3000                 Find first free port starting from 3000
+    lsp -f 3000-3010            Find first free port in range
+    lsp -a                      List all listening ports
+
+Options:
+    -f, --free                  Find free port(s) instead of checking usage
+    -a, --all                   List all listening ports
+    -q, --quiet                 Quiet mode - just exit code (0=free, 1=in use)
+    -k, --kill                  Kill process using the port
+    -h, --help                  Show this help message
+    -v, --version               Show version information
+
+Examples:
+    lsp 3000                    What's on port 3000?
+    lsp -f 3000                 Find free port from 3000 onwards
+    lsp -f 8000-8100            Find free port in range
+    lsp -q 3000 && echo "free"  Check if port is free (scripting)
+    lsp -k 3000                 Kill whatever is using port 3000
+    lsp -a                      Show all listening ports
+EOF
+}
+
+check_port() {
+    local port="$1"
+    local quiet="$2"
+    local kill_proc="$3"
+
+    # Get process info using lsof
+    local info
+    info=$(lsof -i :"$port" -P -n 2>/dev/null | grep LISTEN || true)
+
+    if [[ -z "$info" ]]; then
+        if [[ "$quiet" != "true" ]]; then
+            echo "$port: free"
+        fi
+        return 0
+    else
+        if [[ "$kill_proc" == "true" ]]; then
+            local pids
+            pids=$(echo "$info" | awk '{print $2}' | sort -u)
+            for pid in $pids; do
+                if [[ "$quiet" != "true" ]]; then
+                    echo "Killing PID $pid on port $port"
+                fi
+                kill "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+            done
+            return 0
+        fi
+
+        if [[ "$quiet" != "true" ]]; then
+            echo "$port: in use"
+            echo "$info" | while read -r line; do
+                local cmd pid user
+                cmd=$(echo "$line" | awk '{print $1}')
+                pid=$(echo "$line" | awk '{print $2}')
+                user=$(echo "$line" | awk '{print $3}')
+                echo "  $cmd (pid=$pid, user=$user)"
+            done
+        fi
+        return 1
+    fi
+}
+
+find_free_port() {
+    local range="$1"
+    local start end
+
+    if [[ "$range" == *-* ]]; then
+        start="${range%-*}"
+        end="${range#*-}"
+    else
+        start="$range"
+        end=$((start + 1000))
+    fi
+
+    for ((port=start; port<=end; port++)); do
+        if ! lsof -i :"$port" -P -n >/dev/null 2>&1; then
+            echo "$port"
+            return 0
+        fi
+    done
+
+    echo "No free port found in range $start-$end" >&2
+    return 1
+}
+
+list_all_ports() {
+    echo "PORT   PID    USER       COMMAND"
+    echo "----   ---    ----       -------"
+    lsof -i -P -n 2>/dev/null | grep LISTEN | while read -r line; do
+        local cmd pid user port_info port
+        cmd=$(echo "$line" | awk '{print $1}')
+        pid=$(echo "$line" | awk '{print $2}')
+        user=$(echo "$line" | awk '{print $3}')
+        port_info=$(echo "$line" | awk '{print $9}')
+        port=$(echo "$port_info" | sed 's/.*://')
+        printf "%-6s %-6s %-10s %s\n" "$port" "$pid" "$user" "$cmd"
+    done | sort -n -k1 | uniq
+}
+
+main() {
+    local mode="check"
+    local quiet="false"
+    local kill_proc="false"
+    local ports=()
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -f|--free)
+                mode="free"
+                shift
+                ;;
+            -a|--all)
+                mode="all"
+                shift
+                ;;
+            -q|--quiet)
+                quiet="true"
+                shift
+                ;;
+            -k|--kill)
+                kill_proc="true"
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -v|--version)
+                echo "lsp version $VERSION"
+                exit 0
+                ;;
+            -*)
+                echo "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                ports+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    case "$mode" in
+        all)
+            list_all_ports
+            ;;
+        free)
+            if [[ ${#ports[@]} -eq 0 ]]; then
+                echo "Error: specify a port or range for --free"
+                exit 1
+            fi
+            for range in "${ports[@]}"; do
+                find_free_port "$range"
+            done
+            ;;
+        check)
+            if [[ ${#ports[@]} -eq 0 ]]; then
+                usage
+                exit 1
+            fi
+            local any_in_use="false"
+            for port in "${ports[@]}"; do
+                if ! check_port "$port" "$quiet" "$kill_proc"; then
+                    any_in_use="true"
+                fi
+            done
+            if [[ "$any_in_use" == "true" ]]; then
+                exit 1
+            fi
+            ;;
+    esac
+}
+
+main "$@"
