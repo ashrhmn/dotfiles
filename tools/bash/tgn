@@ -34,6 +34,7 @@ Options:
     -i, --interval <secs>   With -x, repeat command every N seconds (min: 1)
     -b, --buttons <list>    Comma-separated button labels for interactive prompt
     -f, --free-input        Allow free-form text input (requires -b)
+    -z, --zip <file> <args> Create zip file from specified args and send
     --timeout <secs>        Timeout for prompt response (default: 48h)
     -d, --debug             Show debug output (request payload, response)
     -h, --help              Show this help message
@@ -58,6 +59,7 @@ Examples:
     tgn -b "yes,no" "Deploy to prod?"     Interactive prompt
     tgn -b "approve,reject" -f "Review?"  Prompt with free text option
     response=\$(tgn -b "y,n" "Continue?") Capture response
+    tgn -z dots.zip -r nvim tmux zshrc    Create zip and send
 
 Setup:
     1. Message @tgnnnn_bot on Telegram
@@ -419,6 +421,39 @@ send_message_or_file() {
     fi
 }
 
+create_zip_and_send() {
+    local zip_name="$1"
+    shift
+    local zip_args=("$@")
+
+    if [[ -z "$zip_name" ]]; then
+        echo "Error: -z/--zip requires a filename" >&2
+        exit 1
+    fi
+
+    if [[ ${#zip_args[@]} -eq 0 ]]; then
+        echo "Error: -z/--zip requires files/directories to zip" >&2
+        exit 1
+    fi
+
+    local tmp_zip="/tmp/$zip_name"
+    debug "Creating zip: $tmp_zip with args: ${zip_args[*]}"
+
+    if ! zip -q "$tmp_zip" "${zip_args[@]}" 2>&1; then
+        echo "Error: Failed to create zip file" >&2
+        exit 1
+    fi
+
+    debug "Zip created successfully: $tmp_zip"
+    send_file "$tmp_zip" ""
+    local result=$?
+
+    rm -f "$tmp_zip"
+    debug "Removed temporary zip: $tmp_zip"
+
+    return $result
+}
+
 run_command_and_notify() {
     local cmd="$1"
     local title="$2"
@@ -471,6 +506,8 @@ main() {
     local buttons=""
     local free_input="false"
     local timeout="$DEFAULT_TIMEOUT"
+    local zip_mode=""
+    declare -a zip_args
 
     if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
         usage
@@ -511,6 +548,16 @@ main() {
                 free_input="true"
                 shift
                 ;;
+            -z|--zip)
+                zip_mode="$2"
+                shift 2
+                # Capture all remaining arguments for zip
+                while [[ $# -gt 0 ]]; do
+                    zip_args+=("$1")
+                    shift
+                done
+                break
+                ;;
             --timeout)
                 timeout="$2"
                 shift 2
@@ -539,6 +586,12 @@ main() {
                 ;;
         esac
     done
+
+    # Handle zip mode
+    if [[ -n "$zip_mode" ]]; then
+        create_zip_and_send "$zip_mode" "${zip_args[@]}"
+        exit 0
+    fi
 
     # Handle exec mode
     if [[ -n "$exec_cmd" ]]; then
