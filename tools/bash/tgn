@@ -72,7 +72,8 @@ do_login() {
     echo "  2. Send /start to register"
     echo "  3. Send /add <device_name> to create a device"
     echo ""
-    read -rp "Enter your TGN token: " token
+    read -rsp "Enter your TGN token: " token
+    echo
 
     if [[ -z "$token" ]]; then
         echo "Error: Token cannot be empty"
