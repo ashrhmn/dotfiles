@@ -2,14 +2,23 @@
 
 set -e
 
-VERSION="1.0.0"
-TGN_URL="https://tgn.ashrhmn.com/v1/notify"
+VERSION="2.0.0"
+TGN_BASE_URL="https://tgn.ashrhmn.com"
+TGN_NOTIFY_URL="$TGN_BASE_URL/v1/notify"
+TGN_FILE_URL="$TGN_BASE_URL/v1/file"
+TGN_PROMPT_URL="$TGN_BASE_URL/v1/prompt"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tgn"
 CONFIG_FILE="$CONFIG_DIR/config"
 
+DEBUG="false"
+MAX_MESSAGE_LENGTH=3500
+DEFAULT_TIMEOUT=172800  # 48 hours
+
 usage() {
     cat << EOF
-Usage: tgn [OPTIONS] <message>
+Usage: tgn [OPTIONS] <message|file>
+       tgn [OPTIONS] -x <command>
+       <command> | tgn [OPTIONS]
        tgn login
 
 Send notifications to Telegram via TGN service.
@@ -21,6 +30,12 @@ Options:
     -t, --title <text>      Title prefix shown in brackets, e.g. [Deploy]
     -l, --level <level>     Severity level: info, warn, error
     -p, --parse-mode <mode> Telegram parse mode: HTML or MarkdownV2
+    -x, --exec <command>    Run command and send its output as notification
+    -i, --interval <secs>   With -x, repeat command every N seconds (min: 1)
+    -b, --buttons <list>    Comma-separated button labels for interactive prompt
+    -f, --free-input        Allow free-form text input (requires -b)
+    --timeout <secs>        Timeout for prompt response (default: 48h)
+    -d, --debug             Show debug output (request payload, response)
     -h, --help              Show this help message
     -v, --version           Show version information
 
@@ -31,11 +46,18 @@ Configuration:
     Token is read from TGN_TOKEN env var, or from $CONFIG_FILE
     Run 'tgn login' to configure token interactively.
 
+Behavior:
+    - If argument is an existing file, sends the file
+    - If message exceeds $MAX_MESSAGE_LENGTH chars, sends as file
+    - Pipe support: echo "msg" | tgn
+
 Examples:
     tgn "Build completed"
-    tgn -t deploy "Deployment finished"
-    tgn -t alert -l error "Database connection failed"
-    tgn -l warn -p HTML "<b>Warning:</b> High memory usage"
+    tgn ./report.log                      Send file
+    docker logs app | tgn -t logs         Pipe (auto-file if long)
+    tgn -b "yes,no" "Deploy to prod?"     Interactive prompt
+    tgn -b "approve,reject" -f "Review?"  Prompt with free text option
+    response=\$(tgn -b "y,n" "Continue?") Capture response
 
 Setup:
     1. Message @tgnnnn_bot on Telegram
@@ -45,8 +67,15 @@ Setup:
 EOF
 }
 
+debug() {
+    if [[ "$DEBUG" == "true" ]]; then
+        echo "[DEBUG] $*" >&2
+    fi
+}
+
 get_token() {
     if [[ -n "$TGN_TOKEN" ]]; then
+        debug "Using token from TGN_TOKEN env var"
         echo "$TGN_TOKEN"
         return 0
     fi
@@ -55,6 +84,7 @@ get_token() {
         local token
         token=$(grep -E "^TGN_TOKEN=" "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2-)
         if [[ -n "$token" ]]; then
+            debug "Using token from $CONFIG_FILE"
             echo "$token"
             return 0
         fi
@@ -90,6 +120,48 @@ do_login() {
     echo "You can now send notifications with: tgn \"Your message\""
 }
 
+send_file() {
+    local file_path="$1"
+    local caption="$2"
+    local parse_mode="$3"
+
+    local token
+    if ! token=$(get_token); then
+        echo "Error: No token configured" >&2
+        exit 1
+    fi
+
+    debug "Sending file: $file_path"
+
+    local curl_args=(-s -w "\n%{http_code}" -X POST "$TGN_FILE_URL"
+        -H "Authorization: Bearer $token"
+        -F "file=@$file_path")
+
+    if [[ -n "$caption" ]]; then
+        curl_args+=(-F "caption=$caption")
+    fi
+
+    if [[ -n "$parse_mode" ]]; then
+        local normalized_mode
+        case "${parse_mode,,}" in
+            html) normalized_mode="HTML" ;;
+            markdownv2|markdown) normalized_mode="MarkdownV2" ;;
+            *) normalized_mode="$parse_mode" ;;
+        esac
+        curl_args+=(-F "parseMode=$normalized_mode")
+    fi
+
+    local response http_code body
+    response=$(curl "${curl_args[@]}")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+
+    debug "HTTP Status: $http_code"
+    debug "Response: $body"
+
+    handle_response "$http_code" "$body"
+}
+
 send_notification() {
     local message="$1"
     local title="$2"
@@ -98,9 +170,7 @@ send_notification() {
 
     local token
     if ! token=$(get_token); then
-        echo "Error: No token configured"
-        echo ""
-        echo "Set TGN_TOKEN environment variable or run 'tgn login' to configure."
+        echo "Error: No token configured" >&2
         exit 1
     fi
 
@@ -124,50 +194,271 @@ send_notification() {
         json_payload=$(echo "$json_payload" | jq --arg p "$normalized_mode" '. + {parseMode: $p}')
     fi
 
-    local response
-    local http_code
+    debug "URL: $TGN_NOTIFY_URL"
+    debug "Payload: $json_payload"
 
-    response=$(curl -s -w "\n%{http_code}" -X POST "$TGN_URL" \
+    local response http_code body
+    response=$(curl -s -w "\n%{http_code}" -X POST "$TGN_NOTIFY_URL" \
         -H "Authorization: Bearer $token" \
         -H "Content-Type: application/json" \
         -d "$json_payload")
 
     http_code=$(echo "$response" | tail -n1)
-    local body
     body=$(echo "$response" | sed '$d')
+
+    debug "HTTP Status: $http_code"
+    debug "Response: $body"
+
+    handle_response "$http_code" "$body"
+}
+
+send_prompt() {
+    local message="$1"
+    local buttons="$2"
+    local free_input="$3"
+    local parse_mode="$4"
+    local timeout="$5"
+
+    local token
+    if ! token=$(get_token); then
+        echo "Error: No token configured" >&2
+        exit 1
+    fi
+
+    # Build buttons array
+    local buttons_json="[]"
+    if [[ -n "$buttons" ]]; then
+        buttons_json=$(echo "$buttons" | tr ',' '\n' | jq -R . | jq -s .)
+    fi
+
+    local json_payload
+    json_payload=$(jq -n \
+        --arg msg "$message" \
+        --argjson btns "$buttons_json" \
+        '{message: $msg, buttons: $btns}')
+
+    if [[ "$free_input" == "true" ]]; then
+        json_payload=$(echo "$json_payload" | jq '. + {freeInput: true}')
+    fi
+
+    if [[ -n "$parse_mode" ]]; then
+        local normalized_mode
+        case "${parse_mode,,}" in
+            html) normalized_mode="HTML" ;;
+            markdownv2|markdown) normalized_mode="MarkdownV2" ;;
+            *) normalized_mode="$parse_mode" ;;
+        esac
+        json_payload=$(echo "$json_payload" | jq --arg p "$normalized_mode" '. + {parseMode: $p}')
+    fi
+
+    debug "URL: $TGN_PROMPT_URL"
+    debug "Payload: $json_payload"
+
+    local response http_code body
+    response=$(curl -s -w "\n%{http_code}" -X POST "$TGN_PROMPT_URL" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json" \
+        -d "$json_payload")
+
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+
+    debug "HTTP Status: $http_code"
+    debug "Response: $body"
+
+    if [[ "$http_code" != "200" ]]; then
+        handle_response "$http_code" "$body"
+        return 1
+    fi
+
+    local prompt_id
+    prompt_id=$(echo "$body" | jq -r '.promptId')
+
+    if [[ -z "$prompt_id" || "$prompt_id" == "null" ]]; then
+        echo "Error: Failed to get prompt ID" >&2
+        return 1
+    fi
+
+    debug "Prompt ID: $prompt_id"
+    echo "Waiting for response..." >&2
+
+    # Poll with exponential backoff
+    local delay=1
+    local max_delay=15
+    local elapsed=0
+    local start_time
+    start_time=$(date +%s)
+
+    while true; do
+        local now
+        now=$(date +%s)
+        elapsed=$((now - start_time))
+
+        if [[ $elapsed -ge $timeout ]]; then
+            echo "Error: Timeout waiting for response" >&2
+            return 1
+        fi
+
+        response=$(curl -s -w "\n%{http_code}" \
+            "$TGN_PROMPT_URL/$prompt_id" \
+            -H "Authorization: Bearer $token")
+
+        http_code=$(echo "$response" | tail -n1)
+        body=$(echo "$response" | sed '$d')
+
+        debug "Poll response: $body"
+
+        if [[ "$http_code" != "200" ]]; then
+            handle_response "$http_code" "$body"
+            return 1
+        fi
+
+        local status
+        status=$(echo "$body" | jq -r '.status')
+
+        case "$status" in
+            answered)
+                local user_response
+                user_response=$(echo "$body" | jq -r '.response')
+                echo "$user_response"
+                return 0
+                ;;
+            expired)
+                echo "Error: Prompt expired" >&2
+                return 1
+                ;;
+            pending)
+                debug "Still pending, next check in ${delay}s"
+                sleep "$delay"
+                delay=$((delay * 2))
+                [[ $delay -gt $max_delay ]] && delay=$max_delay
+                ;;
+            *)
+                echo "Error: Unknown status: $status" >&2
+                return 1
+                ;;
+        esac
+    done
+}
+
+handle_response() {
+    local http_code="$1"
+    local body="$2"
 
     case "$http_code" in
         200)
-            if command -v jq &>/dev/null && echo "$body" | jq -e '.ok' &>/dev/null; then
-                echo "Notification sent"
+            if echo "$body" | jq -e '.ok' &>/dev/null; then
+                echo "Notification sent" >&2
+                return 0
             else
-                echo "$body"
+                echo "$body" >&2
+                return 0
             fi
+            ;;
+        400)
+            echo "Error: Bad request" >&2
+            if [[ -n "$body" ]]; then
+                echo "$body" >&2
+            fi
+            return 1
             ;;
         401)
-            echo "Error: Invalid or missing token"
-            exit 1
+            echo "Error: Invalid or missing token" >&2
+            return 1
             ;;
         403)
-            echo "Error: Token has been revoked"
-            exit 1
+            echo "Error: Token has been revoked" >&2
+            return 1
             ;;
         429)
-            echo "Error: Rate limit exceeded"
-            exit 1
+            echo "Error: Rate limit exceeded" >&2
+            return 1
             ;;
         502)
-            echo "Error: Telegram API error"
-            exit 1
+            echo "Error: Telegram API error" >&2
+            if [[ -n "$body" ]]; then
+                echo "$body" >&2
+            fi
+            return 1
             ;;
         *)
-            echo "Error: Request failed with status $http_code"
+            echo "Error: Request failed with status $http_code" >&2
             if [[ -n "$body" ]]; then
-                echo "$body"
+                echo "$body" >&2
             fi
-            exit 1
+            return 1
             ;;
     esac
+}
+
+send_message_or_file() {
+    local message="$1"
+    local title="$2"
+    local level="$3"
+    local parse_mode="$4"
+
+    local msg_length=${#message}
+
+    if [[ $msg_length -gt $MAX_MESSAGE_LENGTH ]]; then
+        debug "Message too long ($msg_length chars), sending as file"
+        local tmp_file
+        tmp_file=$(mktemp --suffix=.txt)
+        echo "$message" > "$tmp_file"
+
+        local caption="${title:-Output}"
+        if [[ -n "$level" ]]; then
+            caption="[$level] $caption"
+        fi
+
+        send_file "$tmp_file" "$caption" "$parse_mode"
+        local result=$?
+        rm -f "$tmp_file"
+        return $result
+    else
+        send_notification "$message" "$title" "$level" "$parse_mode"
+    fi
+}
+
+run_command_and_notify() {
+    local cmd="$1"
+    local title="$2"
+    local level="$3"
+    local parse_mode="$4"
+    local interval="$5"
+
+    if [[ -n "$interval" ]]; then
+        if [[ "$interval" -lt 1 ]]; then
+            echo "Error: Interval must be at least 1 second"
+            exit 1
+        fi
+        debug "Running command every ${interval}s: $cmd"
+        echo "Running '$cmd' every ${interval}s (Ctrl+C to stop)" >&2
+        while true; do
+            local output exit_code=0
+            output=$(eval "$cmd" 2>&1) || exit_code=$?
+
+            local msg="$output"
+            if [[ $exit_code -ne 0 ]]; then
+                msg="Exit code: $exit_code"$'\n'"$output"
+            fi
+
+            debug "Command output: $msg"
+            send_message_or_file "$msg" "$title" "$level" "$parse_mode" || true
+            sleep "$interval"
+        done
+    else
+        debug "Running command: $cmd"
+        local output exit_code=0
+        output=$(eval "$cmd" 2>&1) || exit_code=$?
+
+        local msg="$output"
+        if [[ $exit_code -ne 0 ]]; then
+            msg="Exit code: $exit_code"$'\n'"$output"
+        fi
+
+        debug "Command output: $msg"
+        send_message_or_file "$msg" "$title" "$level" "$parse_mode"
+    fi
 }
 
 main() {
@@ -175,8 +466,13 @@ main() {
     local level=""
     local parse_mode=""
     local message=""
+    local exec_cmd=""
+    local interval=""
+    local buttons=""
+    local free_input="false"
+    local timeout="$DEFAULT_TIMEOUT"
 
-    if [[ $# -eq 0 ]]; then
+    if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
         usage
         exit 0
     fi
@@ -198,6 +494,30 @@ main() {
             -p|--parse-mode)
                 parse_mode="$2"
                 shift 2
+                ;;
+            -x|--exec)
+                exec_cmd="$2"
+                shift 2
+                ;;
+            -i|--interval)
+                interval="$2"
+                shift 2
+                ;;
+            -b|--buttons)
+                buttons="$2"
+                shift 2
+                ;;
+            -f|--free-input)
+                free_input="true"
+                shift
+                ;;
+            --timeout)
+                timeout="$2"
+                shift 2
+                ;;
+            -d|--debug)
+                DEBUG="true"
+                shift
                 ;;
             -h|--help)
                 usage
@@ -221,6 +541,22 @@ main() {
         esac
     done
 
+    # Handle exec mode
+    if [[ -n "$exec_cmd" ]]; then
+        run_command_and_notify "$exec_cmd" "$title" "$level" "$parse_mode" "$interval"
+        exit 0
+    fi
+
+    if [[ -n "$interval" ]]; then
+        echo "Error: -i/--interval requires -x/--exec"
+        exit 1
+    fi
+
+    # Read from stdin if no message provided and stdin is piped
+    if [[ -z "$message" ]] && [[ ! -t 0 ]]; then
+        message=$(cat)
+    fi
+
     if [[ -z "$message" ]]; then
         echo "Error: Message is required"
         echo ""
@@ -228,7 +564,29 @@ main() {
         exit 1
     fi
 
-    send_notification "$message" "$title" "$level" "$parse_mode"
+    # Handle prompt mode
+    if [[ -n "$buttons" ]] || [[ "$free_input" == "true" ]]; then
+        send_prompt "$message" "$buttons" "$free_input" "$parse_mode" "$timeout"
+        exit $?
+    fi
+
+    # Check if message is a file path
+    if [[ -f "$message" ]]; then
+        debug "Argument is a file: $message"
+        local caption="$title"
+        if [[ -n "$level" ]]; then
+            if [[ -n "$caption" ]]; then
+                caption="[$level] $caption"
+            else
+                caption="[$level]"
+            fi
+        fi
+        send_file "$message" "$caption" "$parse_mode"
+        exit $?
+    fi
+
+    # Send as message (auto-file if too long)
+    send_message_or_file "$message" "$title" "$level" "$parse_mode"
 }
 
 main "$@"
