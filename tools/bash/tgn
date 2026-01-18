@@ -115,7 +115,13 @@ send_notification() {
     fi
 
     if [[ -n "$parse_mode" ]]; then
-        json_payload=$(echo "$json_payload" | jq --arg p "$parse_mode" '. + {parseMode: $p}')
+        local normalized_mode
+        case "${parse_mode,,}" in
+            html) normalized_mode="HTML" ;;
+            markdownv2|markdown) normalized_mode="MarkdownV2" ;;
+            *) normalized_mode="$parse_mode" ;;
+        esac
+        json_payload=$(echo "$json_payload" | jq --arg p "$normalized_mode" '. + {parseMode: $p}')
     fi
 
     local response
