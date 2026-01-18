@@ -1,0 +1,227 @@
+#!/bin/bash
+
+set -e
+
+VERSION="1.0.0"
+TGN_URL="https://tgn.ashrhmn.com/v1/notify"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tgn"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+usage() {
+    cat << EOF
+Usage: tgn [OPTIONS] <message>
+       tgn login
+
+Send notifications to Telegram via TGN service.
+
+Commands:
+    login               Interactively configure and store token
+
+Options:
+    -t, --title <text>      Title prefix shown in brackets, e.g. [Deploy]
+    -l, --level <level>     Severity level: info, warn, error
+    -p, --parse-mode <mode> Telegram parse mode: HTML or MarkdownV2
+    -h, --help              Show this help message
+    -v, --version           Show version information
+
+Environment Variables:
+    TGN_TOKEN               Device token (takes priority over config file)
+
+Configuration:
+    Token is read from TGN_TOKEN env var, or from $CONFIG_FILE
+    Run 'tgn login' to configure token interactively.
+
+Examples:
+    tgn "Build completed"
+    tgn -t deploy "Deployment finished"
+    tgn -t alert -l error "Database connection failed"
+    tgn -l warn -p HTML "<b>Warning:</b> High memory usage"
+
+Setup:
+    1. Message @tgnnnn_bot on Telegram
+    2. Send /start to register
+    3. Send /add mydevice to create a device and get a token
+    4. Run: tgn login
+EOF
+}
+
+get_token() {
+    if [[ -n "$TGN_TOKEN" ]]; then
+        echo "$TGN_TOKEN"
+        return 0
+    fi
+
+    if [[ -f "$CONFIG_FILE" ]]; then
+        local token
+        token=$(grep -E "^TGN_TOKEN=" "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2-)
+        if [[ -n "$token" ]]; then
+            echo "$token"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+do_login() {
+    echo "TGN Login"
+    echo "---------"
+    echo ""
+    echo "To get a token:"
+    echo "  1. Message @tgnnnn_bot on Telegram"
+    echo "  2. Send /start to register"
+    echo "  3. Send /add <device_name> to create a device"
+    echo ""
+    read -rp "Enter your TGN token: " token
+
+    if [[ -z "$token" ]]; then
+        echo "Error: Token cannot be empty"
+        exit 1
+    fi
+
+    mkdir -p "$CONFIG_DIR"
+    chmod 700 "$CONFIG_DIR"
+    echo "TGN_TOKEN=$token" > "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
+
+    echo ""
+    echo "Token saved to $CONFIG_FILE"
+    echo "You can now send notifications with: tgn \"Your message\""
+}
+
+send_notification() {
+    local message="$1"
+    local title="$2"
+    local level="$3"
+    local parse_mode="$4"
+
+    local token
+    if ! token=$(get_token); then
+        echo "Error: No token configured"
+        echo ""
+        echo "Set TGN_TOKEN environment variable or run 'tgn login' to configure."
+        exit 1
+    fi
+
+    local json_payload="{\"message\":$(printf '%s' "$message" | jq -Rs .)}"
+
+    if [[ -n "$title" ]]; then
+        json_payload=$(echo "$json_payload" | jq --arg t "$title" '. + {title: $t}')
+    fi
+
+    if [[ -n "$level" ]]; then
+        json_payload=$(echo "$json_payload" | jq --arg l "$level" '. + {level: $l}')
+    fi
+
+    if [[ -n "$parse_mode" ]]; then
+        json_payload=$(echo "$json_payload" | jq --arg p "$parse_mode" '. + {parseMode: $p}')
+    fi
+
+    local response
+    local http_code
+
+    response=$(curl -s -w "\n%{http_code}" -X POST "$TGN_URL" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json" \
+        -d "$json_payload")
+
+    http_code=$(echo "$response" | tail -n1)
+    local body
+    body=$(echo "$response" | sed '$d')
+
+    case "$http_code" in
+        200)
+            if command -v jq &>/dev/null && echo "$body" | jq -e '.ok' &>/dev/null; then
+                echo "Notification sent"
+            else
+                echo "$body"
+            fi
+            ;;
+        401)
+            echo "Error: Invalid or missing token"
+            exit 1
+            ;;
+        403)
+            echo "Error: Token has been revoked"
+            exit 1
+            ;;
+        429)
+            echo "Error: Rate limit exceeded"
+            exit 1
+            ;;
+        502)
+            echo "Error: Telegram API error"
+            exit 1
+            ;;
+        *)
+            echo "Error: Request failed with status $http_code"
+            if [[ -n "$body" ]]; then
+                echo "$body"
+            fi
+            exit 1
+            ;;
+    esac
+}
+
+main() {
+    local title=""
+    local level=""
+    local parse_mode=""
+    local message=""
+
+    if [[ $# -eq 0 ]]; then
+        usage
+        exit 0
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            login)
+                do_login
+                exit 0
+                ;;
+            -t|--title)
+                title="$2"
+                shift 2
+                ;;
+            -l|--level)
+                level="$2"
+                shift 2
+                ;;
+            -p|--parse-mode)
+                parse_mode="$2"
+                shift 2
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -v|--version)
+                echo "tgn version $VERSION"
+                exit 0
+                ;;
+            -*)
+                echo "Unknown option: $1"
+                echo ""
+                usage
+                exit 1
+                ;;
+            *)
+                message="$1"
+                shift
+                break
+                ;;
+        esac
+    done
+
+    if [[ -z "$message" ]]; then
+        echo "Error: Message is required"
+        echo ""
+        usage
+        exit 1
+    fi
+
+    send_notification "$message" "$title" "$level" "$parse_mode"
+}
+
+main "$@"
