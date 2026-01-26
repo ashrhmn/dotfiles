@@ -8,7 +8,7 @@
 
 # Model to use (default: "gpt-5").
 # Examples: "gpt-5", "o3", "o4-mini", "codex-*", "gpt-5-codex".
-model = "gpt-5-codex"
+model = "gpt-5.2-codex"
 
 # Provider id from [model_providers] (default: "openai").
 # You may override the built-in OpenAI base URL via OPENAI_BASE_URL env var.
@@ -72,7 +72,7 @@ approval_policy = "never"
 
 # OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
 sandbox_mode = "danger-full-access"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 
 # Extra settings when sandbox_mode = "workspace-write".
 [sandbox_workspace_write]
@@ -175,10 +175,6 @@ experimental_use_exec_command_tool = false
 
 # --- MCP servers -------------------------------------------------------------
 
-[mcp_servers.context7]
-args = ["-y", "@upstash/context7-mcp", "--api-key", "ctx7sk-3dee12c7-1258-430d-9f89-8458d3a66bec"]
-command = "npx"
-
 # Define MCP servers (stdout/stdin transport). Unset by default.
 # [mcp_servers.server-name]
 # command = "npx"
@@ -189,5 +185,8 @@ command = "npx"
 # --- TUI options (reserved for future use) ----------------------------------
 
 [tui]
+
+[notice.model_migrations]
+"gpt-5.1-codex-max" = "gpt-5.2-codex"
 # Reserved for future TUI-specific options.
 
