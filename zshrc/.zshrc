@@ -201,6 +201,12 @@ function pmgen(){
   echo "module.exports = { apps: [{ name: '$1', script: '${@:2}', time: true, log_file: './app.log' }] };">ecosystem.config.cjs;
 }
 
+function d(){
+  set -a
+  source <(doppler secrets download --no-file --format env)
+  set +a
+}
+
 export PATH="$HOME/Library/Python/3.8/bin/:$PATH"
 export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
 export PGHOST="localhost"
