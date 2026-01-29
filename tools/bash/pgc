@@ -11,8 +11,7 @@ Usage: pgc [OPTIONS] [SQL_COMMAND | -- PSQL_ARGS...]
 Connect to PostgreSQL using environment variables from .env file
 
 Options:
-    -e, --env-file <file>    Specify custom .env file (default: .env)
-    --no-env                Skip .env file and use shell environment variables
+    -e, --env-file <file>    Specify custom .env file (default: .env if exists)
     --pgcli                 Use pgcli instead of psql
     --no-pager              Disable pager (add --pset pager=off flag)
     --json                  Output results as JSON array (auto-disables pager)
@@ -30,6 +29,11 @@ Environment Variables (in priority order):
     Password: DATABASE_PASSWORD, DB_PASSWORD, POSTGRES_PASSWORD, PG_PASSWORD, PGPASSWORD
     Database: DATABASE_NAME, DATABASE_DB, DB_DATABASE, DB_NAME, POSTGRES_DB, PG_DATABASE, PGDATABASE
 
+Environment Priority:
+    1. Custom .env file specified with -e flag (errors if not found)
+    2. .env file in current directory (used if exists)
+    3. Shell environment variables (fallback)
+
 Examples:
     pgc                               Open interactive session (read-only)
     pgc "SELECT * FROM users"         Execute query (read-only)
@@ -44,7 +48,6 @@ Examples:
 Note:
     - Default mode is read-only to prevent accidental writes
     - Use -w or --write to allow INSERT/UPDATE/DELETE/DROP operations
-    - Script will error if specified .env file is not found
     - If URL is found, individual host/port/user/password/database variables are ignored
     - Everything after -- is passed directly to psql
 EOF
@@ -52,28 +55,32 @@ EOF
 
 load_env_file() {
     local env_file="$1"
-    
+    local explicit="$2"
+
     if [[ ! -f "$env_file" ]]; then
-        echo "Error: Environment file '$env_file' not found"
-        exit 1
+        if [[ "$explicit" == "true" ]]; then
+            echo "Error: Environment file '$env_file' not found"
+            exit 1
+        fi
+        return 0
     fi
-    
+
     # Read .env file and export variables
     while IFS= read -r line || [[ -n "$line" ]]; do
         # Skip empty lines and comments
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-        
+
         # Extract key=value pairs
         if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
             local key="${BASH_REMATCH[1]}"
             local value="${BASH_REMATCH[2]}"
-            
+
             # Remove surrounding quotes if present
             value="${value#\"}"
             value="${value%\"}"
             value="${value#\'}"
             value="${value%\'}"
-            
+
             export "$key=$value"
         fi
     done < "$env_file"
@@ -210,7 +217,7 @@ connect_postgres() {
 
 main() {
     local env_file=".env"
-    local use_shell_env="false"
+    local env_file_explicit="false"
     local use_pgcli="false"
     local no_pager="false"
     local json_output="false"
@@ -219,16 +226,13 @@ main() {
     local debug="false"
     local psql_args=()
     local sql_command=""
-    
+
     while [[ $# -gt 0 ]]; do
         case $1 in
             -e|--env-file)
                 env_file="$2"
+                env_file_explicit="true"
                 shift 2
-                ;;
-            --no-env)
-                use_shell_env="true"
-                shift
                 ;;
             --pgcli)
                 use_pgcli="true"
@@ -278,7 +282,7 @@ main() {
                 # First non-option argument is treated as SQL command
                 sql_command="$1"
                 shift
-                
+
                 # Check if next argument is --
                 if [[ $# -gt 0 && "$1" == "--" ]]; then
                     shift
@@ -309,15 +313,13 @@ main() {
     if [[ "$allow_write" == "false" ]]; then
         export PGOPTIONS="-c default_transaction_read_only=on"
     fi
-    
-    if [[ "$use_shell_env" == "true" ]]; then
-        if [[ "$debug" == "true" ]]; then
-            echo "Using shell environment variables (skipping .env file)" >&2
-        fi
-    else
-        load_env_file "$env_file"
-    fi
-    
+
+    # Load environment file with priority:
+    # 1. Explicitly specified file (error if not found)
+    # 2. .env in current directory (use if exists)
+    # 3. Shell environment variables (fallback)
+    load_env_file "$env_file" "$env_file_explicit"
+
     connect_postgres "$debug" "$use_pgcli" "$no_pager" "${psql_args[@]}"
 }
 
