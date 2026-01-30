@@ -1,6 +1,10 @@
 # Main zsh configuration
 # This is your personal config that won't be modified by random applications
 
+debug_log() {
+    [[ "$DEBUG_ZSHRC" == "1" ]] && echo "[$(date '+%H:%M:%S.%3N')] DEBUG: $1"
+}
+
 debug_log "Loading user configuration"
 
 # Basic zsh configuration
