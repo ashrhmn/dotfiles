@@ -6,3 +6,4 @@ bin/.bin/*
 
 # History file if stored here
 .zsh_history
+*.log

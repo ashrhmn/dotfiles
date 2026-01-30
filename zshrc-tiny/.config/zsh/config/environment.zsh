@@ -4,8 +4,8 @@
 export EDITOR='nvim'
 
 # Locale
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
 
 # PostgreSQL pager
 export PSQL_PAGER='pspg -X -s 16'
