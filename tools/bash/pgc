@@ -7,6 +7,7 @@ VERSION="1.0.0"
 usage() {
     cat << EOF
 Usage: pgc [OPTIONS] [SQL_COMMAND | -- PSQL_ARGS...]
+       pgc --import <csv_file> <table_name> [IMPORT_OPTIONS]
 
 Connect to PostgreSQL using environment variables from .env file
 
@@ -20,6 +21,15 @@ Options:
     -d, --debug             Show debug output for connection variables
     -h, --help              Show this help message
     -v, --version           Show version information
+
+Import Options (used with --import):
+    --import <file> <table>  Import CSV file into table (auto-enables write mode)
+    --header                CSV has header row (default: true)
+    --no-header             CSV has no header row
+    --delimiter <char>      Field delimiter (default: ',')
+    --null-string <str>     String representing NULL (default: empty string)
+    --truncate              Truncate table before import
+    --columns <list>        Specify column names (e.g., "id,name,email")
 
 Environment Variables (in priority order):
     URL:      DATABASE_URL, DB_URL, POSTGRES_URL, POSTGRESQL_URL, PG_URL
@@ -44,6 +54,13 @@ Examples:
     pgc --pgcli                       Use pgcli instead of psql
     pgc -d                            Show debug output
     pgc -- --help                     Show psql help
+
+Import Examples:
+    pgc --import users.csv users                       Import CSV with header
+    pgc --import data.csv products --no-header         Import without header
+    pgc --import data.csv logs --truncate              Truncate then import
+    pgc --import data.tsv users --delimiter $'\t'      Import TSV file
+    pgc --import data.csv users --columns "id,name"    Specify columns
 
 Note:
     - Default mode is read-only to prevent accidental writes
@@ -215,6 +232,98 @@ connect_postgres() {
     fi
 }
 
+import_csv() {
+    local csv_file="$1"
+    local table_name="$2"
+    local has_header="$3"
+    local delimiter="$4"
+    local null_string="$5"
+    local truncate_table="$6"
+    local columns="$7"
+    local debug="$8"
+    local use_pgcli="$9"
+    local env_file="${10}"
+    local env_file_explicit="${11}"
+
+    # Validate CSV file exists
+    if [[ ! -f "$csv_file" ]]; then
+        echo "Error: CSV file '$csv_file' not found"
+        exit 1
+    fi
+
+    # Get absolute path for CSV file
+    csv_file=$(realpath "$csv_file")
+
+    # Build COPY options
+    local copy_options="FORMAT csv"
+
+    if [[ "$has_header" == "true" ]]; then
+        copy_options="$copy_options, HEADER true"
+    fi
+
+    if [[ -n "$delimiter" ]]; then
+        copy_options="$copy_options, DELIMITER '$delimiter'"
+    fi
+
+    if [[ -n "$null_string" ]]; then
+        copy_options="$copy_options, NULL '$null_string'"
+    fi
+
+    # Build column list
+    local column_list=""
+    if [[ -n "$columns" ]]; then
+        column_list="($columns)"
+    fi
+
+    # Load environment file
+    load_env_file "$env_file" "$env_file_explicit"
+
+    # Build psql command for truncate if needed
+    if [[ "$truncate_table" == "true" ]]; then
+        echo "Truncating table '$table_name'..."
+        local truncate_cmd="TRUNCATE TABLE $table_name;"
+        if [[ "$use_pgcli" == "true" ]]; then
+            echo "Error: --import with --truncate is not supported with --pgcli"
+            exit 1
+        fi
+
+        # Execute truncate
+        export PGOPTIONS=""  # Remove read-only mode
+        psql -c "$truncate_cmd" --pset pager=off
+        if [[ $? -ne 0 ]]; then
+            echo "Error: Failed to truncate table"
+            exit 1
+        fi
+    fi
+
+    # Build \copy command
+    local copy_cmd="\copy $table_name$column_list FROM '$csv_file' WITH ($copy_options)"
+
+    if [[ "$debug" == "true" ]]; then
+        echo "Executing: $copy_cmd" >&2
+    fi
+
+    echo "Importing '$csv_file' into table '$table_name'..."
+
+    # Execute import
+    export PGOPTIONS=""  # Remove read-only mode
+
+    if [[ "$use_pgcli" == "true" ]]; then
+        echo "Error: --import is not supported with --pgcli (use psql)"
+        exit 1
+    fi
+
+    # Execute the \copy command
+    psql -c "$copy_cmd" --pset pager=off
+
+    if [[ $? -eq 0 ]]; then
+        echo "Import completed successfully"
+    else
+        echo "Error: Import failed"
+        exit 1
+    fi
+}
+
 main() {
     local env_file=".env"
     local env_file_explicit="false"
@@ -227,11 +336,56 @@ main() {
     local psql_args=()
     local sql_command=""
 
+    # Import-specific variables
+    local import_mode="false"
+    local import_file=""
+    local import_table=""
+    local import_header="true"
+    local import_delimiter=""
+    local import_null_string=""
+    local import_truncate="false"
+    local import_columns=""
+
     while [[ $# -gt 0 ]]; do
         case $1 in
             -e|--env-file)
                 env_file="$2"
                 env_file_explicit="true"
+                shift 2
+                ;;
+            --import)
+                import_mode="true"
+                import_file="$2"
+                import_table="$3"
+                if [[ -z "$import_file" || -z "$import_table" ]]; then
+                    echo "Error: --import requires <csv_file> and <table_name>"
+                    usage
+                    exit 1
+                fi
+                shift 3
+                ;;
+            --header)
+                import_header="true"
+                shift
+                ;;
+            --no-header)
+                import_header="false"
+                shift
+                ;;
+            --delimiter)
+                import_delimiter="$2"
+                shift 2
+                ;;
+            --null-string)
+                import_null_string="$2"
+                shift 2
+                ;;
+            --truncate)
+                import_truncate="true"
+                shift
+                ;;
+            --columns)
+                import_columns="$2"
                 shift 2
                 ;;
             --pgcli)
@@ -295,7 +449,15 @@ main() {
                 ;;
         esac
     done
-    
+
+    # Handle import mode
+    if [[ "$import_mode" == "true" ]]; then
+        import_csv "$import_file" "$import_table" "$import_header" "$import_delimiter" \
+                   "$import_null_string" "$import_truncate" "$import_columns" "$debug" \
+                   "$use_pgcli" "$env_file" "$env_file_explicit"
+        exit 0
+    fi
+
     # If we have a SQL command, convert it to -c format
     if [[ -n "$sql_command" ]]; then
         if [[ "$json_output" == "true" ]]; then
