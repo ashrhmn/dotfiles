@@ -135,17 +135,13 @@ mask_password() {
     fi
 }
 
-connect_postgres() {
+setup_pg_connection_vars() {
     local debug="$1"
-    local use_pgcli="$2"
-    local no_pager="$3"
-    shift 3
-    local psql_args=("$@")
-    
+
     if [[ "$debug" == "true" ]]; then
         echo "Loading PostgreSQL connection variables:" >&2
     fi
-    
+
     # URL priority: DATABASE_URL, DB_URL, POSTGRES_URL, POSTGRESQL_URL, PG_URL
     local url_vars=(DATABASE_URL DB_URL POSTGRES_URL POSTGRESQL_URL PG_URL)
     local pg_url
@@ -155,6 +151,78 @@ connect_postgres() {
             echo "Using PostgreSQL URL (ignoring individual variables)" >&2
             echo "" >&2
         fi
+        echo "$pg_url"
+        return
+    fi
+
+    # Host priority: DATABASE_HOST, DB_HOST, POSTGRES_HOST, PG_HOST, PGHOST
+    local host_vars=(DATABASE_HOST DB_HOST POSTGRES_HOST PG_HOST PGHOST)
+    local pg_host
+    pg_host=$(get_variable_by_priority "host" "$debug" "${host_vars[@]}")
+    if [[ -n "$pg_host" ]]; then
+        export PGHOST="$pg_host"
+    elif [[ "$debug" == "true" ]]; then
+        echo "No host variable found" >&2
+    fi
+
+    # Port priority: DATABASE_PORT, DB_PORT, POSTGRES_PORT, PG_PORT, PGPORT
+    local port_vars=(DATABASE_PORT DB_PORT POSTGRES_PORT PG_PORT PGPORT)
+    local pg_port
+    pg_port=$(get_variable_by_priority "port" "$debug" "${port_vars[@]}")
+    if [[ -n "$pg_port" ]]; then
+        export PGPORT="$pg_port"
+    elif [[ "$debug" == "true" ]]; then
+        echo "No port variable found" >&2
+    fi
+
+    # User priority: DATABASE_USERNAME, DATABASE_USER, DB_USER, DB_USERNAME, POSTGRES_USER, PG_USER, PGUSER
+    local user_vars=(DATABASE_USERNAME DATABASE_USER DB_USER DB_USERNAME POSTGRES_USER PG_USER PGUSER)
+    local pg_user
+    pg_user=$(get_variable_by_priority "user" "$debug" "${user_vars[@]}")
+    if [[ -n "$pg_user" ]]; then
+        export PGUSER="$pg_user"
+    elif [[ "$debug" == "true" ]]; then
+        echo "No user variable found" >&2
+    fi
+
+    # Password priority: DATABASE_PASSWORD, DB_PASSWORD, POSTGRES_PASSWORD, PG_PASSWORD, PGPASSWORD
+    local password_vars=(DATABASE_PASSWORD DB_PASSWORD POSTGRES_PASSWORD PG_PASSWORD PGPASSWORD)
+    local pg_password
+    pg_password=$(get_variable_by_priority "password" "$debug" "${password_vars[@]}")
+    if [[ -n "$pg_password" ]]; then
+        export PGPASSWORD="$pg_password"
+    elif [[ "$debug" == "true" ]]; then
+        echo "No password variable found" >&2
+    fi
+
+    # Database priority: DATABASE_NAME, DATABASE_DB, DB_DATABASE, DB_NAME, POSTGRES_DB, PG_DATABASE, PGDATABASE
+    local db_vars=(DATABASE_NAME DATABASE_DB DB_DATABASE DB_NAME POSTGRES_DB PG_DATABASE PGDATABASE)
+    local pg_database
+    pg_database=$(get_variable_by_priority "database" "$debug" "${db_vars[@]}")
+    if [[ -n "$pg_database" ]]; then
+        export PGDATABASE="$pg_database"
+    elif [[ "$debug" == "true" ]]; then
+        echo "No database variable found" >&2
+    fi
+
+    if [[ "$debug" == "true" ]]; then
+        echo "" >&2
+    fi
+}
+
+connect_postgres() {
+    local debug="$1"
+    local use_pgcli="$2"
+    local no_pager="$3"
+    shift 3
+    local psql_args=("$@")
+
+    # Setup connection variables and get URL if available
+    local pg_url
+    pg_url=$(setup_pg_connection_vars "$debug")
+
+    # If URL is available, use it directly
+    if [[ -n "$pg_url" ]]; then
         if [[ "$use_pgcli" == "true" ]]; then
             pgcli "$pg_url" "${psql_args[@]}"
         else
@@ -166,61 +234,8 @@ connect_postgres() {
         fi
         return
     fi
-    
-    # Host priority: DATABASE_HOST, DB_HOST, POSTGRES_HOST, PG_HOST, PGHOST
-    local host_vars=(DATABASE_HOST DB_HOST POSTGRES_HOST PG_HOST PGHOST)
-    local pg_host
-    pg_host=$(get_variable_by_priority "host" "$debug" "${host_vars[@]}")
-    if [[ -n "$pg_host" ]]; then
-        export PGHOST="$pg_host"
-    elif [[ "$debug" == "true" ]]; then
-        echo "No host variable found" >&2
-    fi
-    
-    # Port priority: DATABASE_PORT, DB_PORT, POSTGRES_PORT, PG_PORT, PGPORT
-    local port_vars=(DATABASE_PORT DB_PORT POSTGRES_PORT PG_PORT PGPORT)
-    local pg_port
-    pg_port=$(get_variable_by_priority "port" "$debug" "${port_vars[@]}")
-    if [[ -n "$pg_port" ]]; then
-        export PGPORT="$pg_port"
-    elif [[ "$debug" == "true" ]]; then
-        echo "No port variable found" >&2
-    fi
-    
-    # User priority: DATABASE_USERNAME, DATABASE_USER, DB_USER, DB_USERNAME, POSTGRES_USER, PG_USER, PGUSER
-    local user_vars=(DATABASE_USERNAME DATABASE_USER DB_USER DB_USERNAME POSTGRES_USER PG_USER PGUSER)
-    local pg_user
-    pg_user=$(get_variable_by_priority "user" "$debug" "${user_vars[@]}")
-    if [[ -n "$pg_user" ]]; then
-        export PGUSER="$pg_user"
-    elif [[ "$debug" == "true" ]]; then
-        echo "No user variable found" >&2
-    fi
-    
-    # Password priority: DATABASE_PASSWORD, DB_PASSWORD, POSTGRES_PASSWORD, PG_PASSWORD, PGPASSWORD
-    local password_vars=(DATABASE_PASSWORD DB_PASSWORD POSTGRES_PASSWORD PG_PASSWORD PGPASSWORD)
-    local pg_password
-    pg_password=$(get_variable_by_priority "password" "$debug" "${password_vars[@]}")
-    if [[ -n "$pg_password" ]]; then
-        export PGPASSWORD="$pg_password"
-    elif [[ "$debug" == "true" ]]; then
-        echo "No password variable found" >&2
-    fi
-    
-    # Database priority: DATABASE_NAME, DATABASE_DB, DB_DATABASE, DB_NAME, POSTGRES_DB, PG_DATABASE, PGDATABASE
-    local db_vars=(DATABASE_NAME DATABASE_DB DB_DATABASE DB_NAME POSTGRES_DB PG_DATABASE PGDATABASE)
-    local pg_database
-    pg_database=$(get_variable_by_priority "database" "$debug" "${db_vars[@]}")
-    if [[ -n "$pg_database" ]]; then
-        export PGDATABASE="$pg_database"
-    elif [[ "$debug" == "true" ]]; then
-        echo "No database variable found" >&2
-    fi
-    
-    if [[ "$debug" == "true" ]]; then
-        echo "" >&2
-    fi
-    # Execute psql or pgcli with the environment variables and any additional arguments
+
+    # Otherwise use environment variables (already exported by setup_pg_connection_vars)
     if [[ "$use_pgcli" == "true" ]]; then
         pgcli "${psql_args[@]}"
     else
@@ -278,6 +293,10 @@ import_csv() {
     # Load environment file
     load_env_file "$env_file" "$env_file_explicit"
 
+    # Setup PostgreSQL connection variables
+    local pg_url
+    pg_url=$(setup_pg_connection_vars "$debug")
+
     # Build psql command for truncate if needed
     if [[ "$truncate_table" == "true" ]]; then
         echo "Truncating table '$table_name'..."
@@ -289,7 +308,11 @@ import_csv() {
 
         # Execute truncate
         export PGOPTIONS=""  # Remove read-only mode
-        psql -c "$truncate_cmd" --pset pager=off
+        if [[ -n "$pg_url" ]]; then
+            psql "$pg_url" -c "$truncate_cmd" --pset pager=off
+        else
+            psql -c "$truncate_cmd" --pset pager=off
+        fi
         if [[ $? -ne 0 ]]; then
             echo "Error: Failed to truncate table"
             exit 1
@@ -314,7 +337,11 @@ import_csv() {
     fi
 
     # Execute the \copy command
-    psql -c "$copy_cmd" --pset pager=off
+    if [[ -n "$pg_url" ]]; then
+        psql "$pg_url" -c "$copy_cmd" --pset pager=off
+    else
+        psql -c "$copy_cmd" --pset pager=off
+    fi
 
     if [[ $? -eq 0 ]]; then
         echo "Import completed successfully"
