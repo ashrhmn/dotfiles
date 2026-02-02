@@ -151,7 +151,7 @@ setup_pg_connection_vars() {
             echo "Using PostgreSQL URL (ignoring individual variables)" >&2
             echo "" >&2
         fi
-        echo "$pg_url"
+        PG_URL="$pg_url"
         return
     fi
 
@@ -218,18 +218,18 @@ connect_postgres() {
     local psql_args=("$@")
 
     # Setup connection variables and get URL if available
-    local pg_url
-    pg_url=$(setup_pg_connection_vars "$debug")
+    PG_URL=""
+    setup_pg_connection_vars "$debug"
 
     # If URL is available, use it directly
-    if [[ -n "$pg_url" ]]; then
+    if [[ -n "$PG_URL" ]]; then
         if [[ "$use_pgcli" == "true" ]]; then
-            pgcli "$pg_url" "${psql_args[@]}"
+            pgcli "$PG_URL" "${psql_args[@]}"
         else
             if [[ "$no_pager" == "true" ]]; then
-                psql "$pg_url" --pset pager=off "${psql_args[@]}"
+                psql "$PG_URL" --pset pager=off "${psql_args[@]}"
             else
-                psql "$pg_url" "${psql_args[@]}"
+                psql "$PG_URL" "${psql_args[@]}"
             fi
         fi
         return
@@ -294,8 +294,8 @@ import_csv() {
     load_env_file "$env_file" "$env_file_explicit"
 
     # Setup PostgreSQL connection variables
-    local pg_url
-    pg_url=$(setup_pg_connection_vars "$debug")
+    PG_URL=""
+    setup_pg_connection_vars "$debug"
 
     # Build psql command for truncate if needed
     if [[ "$truncate_table" == "true" ]]; then
@@ -308,8 +308,8 @@ import_csv() {
 
         # Execute truncate
         export PGOPTIONS=""  # Remove read-only mode
-        if [[ -n "$pg_url" ]]; then
-            psql "$pg_url" -c "$truncate_cmd" --pset pager=off
+        if [[ -n "$PG_URL" ]]; then
+            psql "$PG_URL" -c "$truncate_cmd" --pset pager=off
         else
             psql -c "$truncate_cmd" --pset pager=off
         fi
@@ -337,8 +337,8 @@ import_csv() {
     fi
 
     # Execute the \copy command
-    if [[ -n "$pg_url" ]]; then
-        psql "$pg_url" -c "$copy_cmd" --pset pager=off
+    if [[ -n "$PG_URL" ]]; then
+        psql "$PG_URL" -c "$copy_cmd" --pset pager=off
     else
         psql -c "$copy_cmd" --pset pager=off
     fi
