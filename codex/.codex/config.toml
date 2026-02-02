@@ -10,6 +10,7 @@
 # Examples: "gpt-5", "o3", "o4-mini", "codex-*", "gpt-5-codex".
 model = "gpt-5.2-codex"
 
+web_search = "live"
 # Provider id from [model_providers] (default: "openai").
 # You may override the built-in OpenAI base URL via OPENAI_BASE_URL env var.
 model_provider = "openai"
@@ -144,7 +145,7 @@ project_doc_max_bytes = 32768
 preferred_auth_method = "chatgpt"
 
 [features]
-web_search_request = true
+# web_search_request = true
 
 # Enable built-in web search tool (alias: tools.web_search_request) (default: false).
 # [tools]
