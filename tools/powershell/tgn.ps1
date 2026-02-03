@@ -25,7 +25,7 @@
     Files/directories to include in zip
 .PARAMETER Timeout
     Timeout for prompt response in seconds (default: 172800 / 48h)
-.PARAMETER Debug
+.PARAMETER DebugMode
     Show debug output (request payload, response)
 .PARAMETER Login
     Interactively configure and store token
@@ -83,7 +83,7 @@ param(
     [int]$Timeout = 172800,
 
     [Alias('d')]
-    [switch]$Debug,
+    [switch]$DebugMode,
 
     [Parameter(ParameterSetName='Help')]
     [Alias('h')]
@@ -107,7 +107,7 @@ $script:DEFAULT_TIMEOUT = 172800
 
 function Write-Debug-Info {
     param([string]$Message)
-    if ($Debug) {
+    if ($script:DebugMode) {
         Write-Host "[DEBUG] $Message" -ForegroundColor Yellow
     }
 }
@@ -152,7 +152,7 @@ Options:
     -Zip, -z <file>         Create zip file and send
     -ZipArgs <paths>        Files/directories to include in zip
     -Timeout <secs>         Timeout for prompt response (default: 48h)
-    -Debug, -d              Show debug output (request payload, response)
+    -DebugMode, -d          Show debug output (request payload, response)
     -Help, -h               Show this help message
     -Version, -v            Show version information
 
@@ -685,7 +685,7 @@ if ($Interval) {
 
 # Read from stdin if no message provided and stdin is available
 if (-not $Message -and -not [Console]::IsInputRedirected) {
-    if ($PSBoundParameters.Count -eq 0 -or ($PSBoundParameters.Count -eq 1 -and $PSBoundParameters.ContainsKey('Debug'))) {
+    if ($PSBoundParameters.Count -eq 0 -or ($PSBoundParameters.Count -eq 1 -and $PSBoundParameters.ContainsKey('DebugMode'))) {
         Show-Usage
         exit 0
     }
