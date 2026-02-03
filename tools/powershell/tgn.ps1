@@ -95,7 +95,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$script:VERSION = "2.0.0"
+$script:TGN_VERSION = "2.0.0"
 $script:TGN_BASE_URL = "https://tgn.ashrhmn.com"
 $script:TGN_NOTIFY_URL = "$script:TGN_BASE_URL/v1/notify"
 $script:TGN_FILE_URL = "$script:TGN_BASE_URL/v1/file"
@@ -657,7 +657,7 @@ if ($Help) {
 }
 
 if ($Version) {
-    Write-Host "tgn version $script:VERSION"
+    Write-Host "tgn version $script:TGN_VERSION"
     exit 0
 }
 
