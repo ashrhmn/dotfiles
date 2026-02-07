@@ -74,6 +74,7 @@ approval_policy = "never"
 # OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
 sandbox_mode = "danger-full-access"
 model_reasoning_effort = "xhigh"
+personality = "pragmatic"
 
 # Extra settings when sandbox_mode = "workspace-write".
 [sandbox_workspace_write]
