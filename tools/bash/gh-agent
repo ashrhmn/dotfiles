@@ -13,7 +13,7 @@ usage() {
     cat << EOF
 Usage: $cmd [COMMAND] [PATH]
 
-Automated issue resolver that monitors git repositories and uses Claude to solve issues.
+Automated issue resolver that monitors git repositories and uses AI Agent to solve issues.
 
 Commands:
     add [PATH]          Add directory to watch list (. for current directory)
@@ -241,7 +241,7 @@ process_directory() {
     fi
 
     echo "Found $issue_count open issue(s)"
-    echo "Starting Claude to resolve issues..."
+    echo "Starting to resolve issues..."
 
     # Create log file with timestamp and sanitized directory name
     local timestamp
@@ -257,11 +257,11 @@ process_directory() {
     local notification_file
     notification_file=$(mktemp)
 
-    # Stream Claude output in real-time:
+    # Stream Agent output in real-time:
     # 1. Save raw JSON to log file with tee
     # 2. Format and display human-friendly output in real-time
     # 3. Capture formatted output for telegram notification
-    claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose "use gh cli to see open issues, pick any one of them that seems needs to be done first. Switch to suitable named feature branch, fix the issue, make sure build lint is passing. Then commit without co author then push to that feature branch and create a pull request using gh cli. Then mark the issue as closed using gh cli. follow @AGENTS.md and CLAUDE.md if present in cwd" 2>&1 | \
+    claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose "use gh cli to see open issues, pick any one of them that seems needs to be done first. Switch to suitable named feature branch, fix the issue, make sure build lint is passing. Then commit without co author then push to that feature branch and create a pull request using gh cli. Then mark the issue as closed using gh cli. follow @AGENTS.md and CLAUDE.md if present in cwd. Never mention about claude or claude code or codex or any LLM model in your output content, code, commit or any comment in github" 2>&1 | \
         tee "$log_file" | \
         format_json_stream | \
         tee "$notification_file"
