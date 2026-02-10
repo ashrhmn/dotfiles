@@ -1,0 +1,357 @@
+#!/bin/bash
+
+set -e
+
+VERSION="1.0.0"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gh-agent"
+CONFIG_FILE="$CONFIG_DIR/.config.json"
+
+usage() {
+    local cmd
+    cmd=$(basename "$0")
+    cat << EOF
+Usage: $cmd [COMMAND] [PATH]
+
+Automated issue resolver that monitors git repositories and uses Claude to solve issues.
+
+Commands:
+    add [PATH]          Add directory to watch list (. for current directory)
+    remove [PATH]       Remove directory from watch list
+    list                List all watched directories
+    start               Start monitoring (runs forever, checks every 5 minutes)
+    version             Show version information
+
+Options:
+    -h, --help          Show this help message
+    -v, --version       Show version information
+
+Examples:
+    $cmd add .                  Add current directory
+    $cmd add /path/to/repo      Add specific directory
+    $cmd remove .               Remove current directory
+    $cmd list                   Show all watched directories
+    $cmd start                  Start the monitoring service
+
+Configuration:
+    Directories are stored in: $CONFIG_FILE
+EOF
+}
+
+ensure_config() {
+    mkdir -p "$CONFIG_DIR"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo '{"dirs":[]}' > "$CONFIG_FILE"
+    fi
+}
+
+get_absolute_path() {
+    local path="$1"
+    if [[ "$path" == "." ]]; then
+        pwd
+    elif [[ "$path" == /* ]]; then
+        echo "$path"
+    else
+        echo "$(pwd)/$path"
+    fi
+}
+
+add_directory() {
+    local path="$1"
+    if [[ -z "$path" ]]; then
+        echo "Error: Path required"
+        echo "Usage: $(basename "$0") add [PATH]"
+        exit 1
+    fi
+
+    ensure_config
+    local abs_path
+    abs_path=$(get_absolute_path "$path")
+
+    if [[ ! -d "$abs_path" ]]; then
+        echo "Error: Directory does not exist: $abs_path"
+        exit 1
+    fi
+
+    if [[ ! -d "$abs_path/.git" ]]; then
+        echo "Error: Not a git repository: $abs_path"
+        exit 1
+    fi
+
+    local existing_dirs
+    existing_dirs=$(jq -r '.dirs[]' "$CONFIG_FILE" 2>/dev/null || echo "")
+
+    if echo "$existing_dirs" | grep -Fxq "$abs_path"; then
+        echo "Directory already added: $abs_path"
+        exit 0
+    fi
+
+    jq --arg dir "$abs_path" '.dirs += [$dir]' "$CONFIG_FILE" > "$CONFIG_FILE.tmp"
+    mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+    echo "Added directory: $abs_path"
+}
+
+remove_directory() {
+    local path="$1"
+    if [[ -z "$path" ]]; then
+        echo "Error: Path required"
+        echo "Usage: $(basename "$0") remove [PATH]"
+        exit 1
+    fi
+
+    ensure_config
+    local abs_path
+    abs_path=$(get_absolute_path "$path")
+
+    jq --arg dir "$abs_path" '.dirs = (.dirs - [$dir])' "$CONFIG_FILE" > "$CONFIG_FILE.tmp"
+    mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+    echo "Removed directory: $abs_path"
+}
+
+list_directories() {
+    ensure_config
+    local dirs
+    dirs=$(jq -r '.dirs[]' "$CONFIG_FILE" 2>/dev/null)
+
+    if [[ -z "$dirs" ]]; then
+        echo "No directories configured"
+        echo "Use '$(basename "$0") add [PATH]' to add directories"
+    else
+        echo "Watched directories:"
+        echo "$dirs" | while read -r dir; do
+            echo "  $dir"
+        done
+    fi
+}
+
+format_json_stream() {
+    local notification_msg=""
+    local current_turn=0
+
+    while IFS= read -r line; do
+        if [[ -z "$line" ]]; then
+            continue
+        fi
+
+        local msg_type
+        msg_type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
+
+        case "$msg_type" in
+            system)
+                local subtype
+                subtype=$(echo "$line" | jq -r '.subtype // empty' 2>/dev/null)
+                if [[ "$subtype" == "init" ]]; then
+                    local cwd model
+                    cwd=$(echo "$line" | jq -r '.cwd // empty' 2>/dev/null)
+                    model=$(echo "$line" | jq -r '.model // empty' 2>/dev/null)
+                    echo "==> Initialized in: $cwd"
+                    echo "==> Model: $model"
+                    notification_msg+="Initialized in: $cwd\nModel: $model\n"
+                fi
+                ;;
+            assistant)
+                current_turn=$((current_turn + 1))
+                local content
+                content=$(echo "$line" | jq -r '.message.content[]?.text // empty' 2>/dev/null)
+                if [[ -n "$content" ]]; then
+                    echo ""
+                    echo "--- Turn $current_turn ---"
+                    echo "$content"
+                    notification_msg+="\n--- Turn $current_turn ---\n$content\n"
+                fi
+                ;;
+            result)
+                local subtype result
+                subtype=$(echo "$line" | jq -r '.subtype // empty' 2>/dev/null)
+                result=$(echo "$line" | jq -r '.result // empty' 2>/dev/null)
+                echo ""
+                echo "==> Result: $subtype"
+                if [[ -n "$result" ]]; then
+                    echo "$result"
+                fi
+                notification_msg+="\n==> Result: $subtype\n$result"
+                ;;
+        esac
+    done
+
+    echo "$notification_msg"
+}
+
+process_directory() {
+    local dir="$1"
+
+    echo ""
+    echo "========================================"
+    echo "Processing: $dir"
+    echo "========================================"
+
+    cd "$dir" || return 1
+
+    # Check git status
+    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+        echo "Skipping (dirty working directory): $dir"
+        return 0
+    fi
+
+    # Track current branch
+    local original_branch
+    original_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [[ -z "$original_branch" ]]; then
+        echo "Skipping (could not determine branch): $dir"
+        return 0
+    fi
+
+    echo "Current branch: $original_branch"
+
+    # Check issue count
+    local issue_count
+    issue_count=$(gh issue list --json id 2>/dev/null | jq 'length' 2>/dev/null)
+
+    if [[ -z "$issue_count" ]] || [[ "$issue_count" == "0" ]]; then
+        echo "No open issues found, skipping: $dir"
+        return 0
+    fi
+
+    echo "Found $issue_count open issue(s)"
+    echo "Starting Claude to resolve issues..."
+
+    # Run Claude and capture output
+    local claude_output
+    local notification_content
+
+    claude_output=$(claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose "use gh cli to see open issues, pick any one of them that seems needs to be done first. Switch to suitable named feature branch, fix the issue, make sure build lint is passing. Then commit without co author then push to that feature branch and create a pull request using gh cli. Then mark the issue as closed using gh cli. follow @AGENTS.md and CLAUDE.md if present in cwd" 2>&1)
+
+    # Format and display output
+    notification_content=$(echo "$claude_output" | format_json_stream)
+
+    # Send telegram notification silently
+    echo "$notification_content" | tgn -t "gh-agent: $dir" 2>/dev/null >/dev/null || true
+
+    # Switch back to original branch
+    if [[ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != "$original_branch" ]]; then
+        echo ""
+        echo "Switching back to: $original_branch"
+        git checkout "$original_branch" 2>/dev/null || true
+    fi
+
+    echo "Completed processing: $dir"
+}
+
+is_fifth_minute() {
+    local current_minute
+    current_minute=$(date +%M)
+    # Remove leading zero for arithmetic
+    current_minute=$((10#$current_minute))
+
+    if (( current_minute % 5 == 0 )); then
+        return 0
+    else
+        return 1
+    fi
+}
+
+start_monitoring() {
+    ensure_config
+
+    echo "Starting $(basename "$0") monitoring service (v$VERSION)"
+    echo "Checking every 5 minutes (00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)"
+    echo "Press Ctrl+C to stop"
+    echo ""
+
+    local last_run_minute=-1
+
+    while true; do
+        sleep 60
+
+        local current_minute
+        current_minute=$(date +%M)
+        current_minute=$((10#$current_minute))
+
+        # Skip if already ran this minute
+        if [[ "$current_minute" == "$last_run_minute" ]]; then
+            continue
+        fi
+
+        # Check if it's a 5th minute
+        if is_fifth_minute; then
+            last_run_minute=$current_minute
+
+            echo ""
+            echo "========================================"
+            echo "Starting check at $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "========================================"
+
+            local dirs
+            dirs=$(jq -r '.dirs[]' "$CONFIG_FILE" 2>/dev/null)
+
+            if [[ -z "$dirs" ]]; then
+                echo "No directories configured. Use '$(basename "$0") add [PATH]' to add directories."
+                continue
+            fi
+
+            # Process each directory
+            echo "$dirs" | while read -r dir; do
+                if [[ -d "$dir" ]]; then
+                    process_directory "$dir"
+                else
+                    echo "Skipping (directory not found): $dir"
+                fi
+            done
+
+            echo ""
+            echo "========================================"
+            echo "Completed check at $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "Next check in ~5 minutes"
+            echo "========================================"
+        fi
+    done
+}
+
+main() {
+    if [[ $# -eq 0 ]]; then
+        usage
+        exit 0
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            add)
+                shift
+                add_directory "$1"
+                exit 0
+                ;;
+            remove)
+                shift
+                remove_directory "$1"
+                exit 0
+                ;;
+            list)
+                list_directories
+                exit 0
+                ;;
+            start)
+                start_monitoring
+                exit 0
+                ;;
+            version)
+                echo "$(basename "$0") version $VERSION"
+                exit 0
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -v|--version)
+                echo "$(basename "$0") version $VERSION"
+                exit 0
+                ;;
+            *)
+                echo "Unknown command: $1"
+                echo ""
+                usage
+                exit 1
+                ;;
+        esac
+    done
+}
+
+main "$@"
