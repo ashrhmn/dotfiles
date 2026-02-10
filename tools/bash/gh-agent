@@ -268,7 +268,7 @@ process_directory() {
     # 1. Save raw JSON to log file with tee
     # 2. Format and display human-friendly output in real-time
     # 3. Capture formatted output for telegram notification
-    claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose "use gh cli to see open issues, pick any one of them that seems needs to be done first. Switch to suitable named feature branch, fix the issue, make sure build lint is passing. Then commit without co author then push to that feature branch and create a pull request using gh cli. Then mark the issue as closed using gh cli. follow @AGENTS.md and CLAUDE.md if present in cwd. Never mention about claude or claude code or codex or any LLM model in your output content, code, commit or any comment in github" 2>&1 | \
+    claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose "Use gh cli to list open issues and select the highest priority one. Create a descriptively named feature branch for the fix. Implement the solution, ensure all tests pass and build/lint/typecheck succeeds. Commit without co-author using conventional commit format if the repo uses it. Push to the feature branch and create a PR via gh cli that references the issue number. After PR is created, close the issue via gh cli. If any step fails, stop and explain the error. Follow @AGENTS.md and @CLAUDE.md if present in cwd. Never mention Claude, Claude Code, Codex, GPT, AI, or any LLM in commits, code comments, PR descriptions, or GitHub comments." 2>&1 | \
         tee "$log_file" | \
         format_json_stream | \
         tee "$notification_file"
