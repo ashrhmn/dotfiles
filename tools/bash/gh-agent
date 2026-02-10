@@ -241,6 +241,13 @@ process_directory() {
     fi
 
     echo "Found $issue_count open issue(s)"
+
+    # Pull latest changes before starting work
+    echo "Pulling latest changes..."
+    if ! git pull 2>/dev/null; then
+        echo "Warning: Failed to pull latest changes, continuing anyway..."
+    fi
+
     echo "Starting to resolve issues..."
 
     # Create log file with timestamp and sanitized directory name
