@@ -5,6 +5,7 @@ set -e
 VERSION="1.0.0"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gh-agent"
 CONFIG_FILE="$CONFIG_DIR/.config.json"
+LOG_DIR="$CONFIG_DIR/logs"
 
 usage() {
     local cmd
@@ -19,6 +20,7 @@ Commands:
     remove [PATH]       Remove directory from watch list
     list                List all watched directories
     start               Start monitoring (runs forever, checks every 5 minutes)
+    logs                Show recent log files
     version             Show version information
 
 Options:
@@ -31,14 +33,17 @@ Examples:
     $cmd remove .               Remove current directory
     $cmd list                   Show all watched directories
     $cmd start                  Start the monitoring service
+    $cmd logs                   List recent log files
 
 Configuration:
     Directories are stored in: $CONFIG_FILE
+    Logs are stored in: $LOG_DIR
 EOF
 }
 
 ensure_config() {
     mkdir -p "$CONFIG_DIR"
+    mkdir -p "$LOG_DIR"
     if [[ ! -f "$CONFIG_FILE" ]]; then
         echo '{"dirs":[]}' > "$CONFIG_FILE"
     fi
@@ -121,6 +126,30 @@ list_directories() {
             echo "  $dir"
         done
     fi
+}
+
+list_logs() {
+    ensure_config
+
+    if [[ ! -d "$LOG_DIR" ]] || [[ -z "$(ls -A "$LOG_DIR" 2>/dev/null)" ]]; then
+        echo "No log files found"
+        echo "Logs will be created in: $LOG_DIR"
+        return
+    fi
+
+    echo "Recent log files (latest first):"
+    ls -lt "$LOG_DIR"/*.json 2>/dev/null | head -20 | while read -r line; do
+        local file
+        file=$(echo "$line" | awk '{print $NF}')
+        local size
+        size=$(echo "$line" | awk '{print $5}')
+        local date
+        date=$(echo "$line" | awk '{print $6, $7, $8}')
+        echo "  $(basename "$file") - $size bytes - $date"
+    done
+
+    echo ""
+    echo "Log directory: $LOG_DIR"
 }
 
 format_json_stream() {
@@ -214,11 +243,23 @@ process_directory() {
     echo "Found $issue_count open issue(s)"
     echo "Starting Claude to resolve issues..."
 
+    # Create log file with timestamp and sanitized directory name
+    local timestamp
+    timestamp=$(date '+%Y%m%d_%H%M%S')
+    local dir_name
+    dir_name=$(basename "$dir")
+    local log_file="$LOG_DIR/${timestamp}_${dir_name}.json"
+
+    echo "Logging to: $log_file"
+
     # Run Claude and capture output
     local claude_output
     local notification_content
 
     claude_output=$(claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose "use gh cli to see open issues, pick any one of them that seems needs to be done first. Switch to suitable named feature branch, fix the issue, make sure build lint is passing. Then commit without co author then push to that feature branch and create a pull request using gh cli. Then mark the issue as closed using gh cli. follow @AGENTS.md and CLAUDE.md if present in cwd" 2>&1)
+
+    # Save raw JSON output to log file
+    echo "$claude_output" > "$log_file"
 
     # Format and display output
     notification_content=$(echo "$claude_output" | format_json_stream)
@@ -326,6 +367,10 @@ main() {
                 ;;
             list)
                 list_directories
+                exit 0
+                ;;
+            logs)
+                list_logs
                 exit 0
                 ;;
             start)
