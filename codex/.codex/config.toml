@@ -8,7 +8,7 @@
 
 # Model to use (default: "gpt-5").
 # Examples: "gpt-5", "o3", "o4-mini", "codex-*", "gpt-5-codex".
-model = "gpt-5.2-codex"
+model = "gpt-5.3-codex"
 
 web_search = "live"
 # Provider id from [model_providers] (default: "openai").
