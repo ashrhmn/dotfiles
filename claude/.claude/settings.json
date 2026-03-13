@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "defaultMode": "default"
+  },
+  "model": "sonnet",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tgn \"Done on $CLAUDE_PROJECT_DIR\""
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "printf '[%s@%s %s]' \"$(whoami)\" \"$(hostname -s)\" \"$(basename \"$(pwd)\")\""
+  },
+  "enabledPlugins": {
+    "gopls-lsp@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true
+  },
+  "alwaysThinkingEnabled": true,
+  "autoUpdatesChannel": "stable",
+  "skipDangerousModePermissionPrompt": true
+}
