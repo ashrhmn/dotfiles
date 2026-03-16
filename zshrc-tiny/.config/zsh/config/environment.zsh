@@ -1,5 +1,7 @@
 # Environment variables
 
+export TERM='xterm'
+
 # Editor
 export EDITOR='nvim'
 
