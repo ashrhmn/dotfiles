@@ -21,8 +21,9 @@ return {
 		},
 		config = function()
 			local actions = require("telescope.actions")
+			local telescope = require("telescope")
 
-			require("telescope").setup({
+			telescope.setup({
 				defaults = {
 					vimgrep_arguments = {
 						"rg",
@@ -117,8 +118,8 @@ return {
 				},
 			})
 
-			require("telescope").load_extension("ui-select")
-			require("telescope").load_extension("fzf")
+			telescope.load_extension("ui-select")
+			pcall(telescope.load_extension, "fzf")
 		end,
 	},
 }
