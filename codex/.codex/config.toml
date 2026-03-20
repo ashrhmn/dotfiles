@@ -193,7 +193,5 @@ experimental_use_exec_command_tool = false
 "gpt-5.2-codex" = "gpt-5.3-codex"
 "gpt-5.3-codex" = "gpt-5.4"
 
-[projects."/home/ash/clones/ashrhmn/krown-staking-contract"]
-trust_level = "trusted"
 # Reserved for future TUI-specific options.
 
