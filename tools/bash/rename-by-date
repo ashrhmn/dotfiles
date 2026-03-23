@@ -205,7 +205,16 @@ extract_date() {
                    sed 's/Z$//' || true)
     fi
 
-    # 3. If no GPS timestamp, try CreateDate
+    # 3. If no GPS timestamp, try CreationDate (QuickTime/MOV - includes timezone offset, local time)
+    if [[ -z "$date_str" ]]; then
+        date_str=$(exiftool -CreationDate "$file" 2>/dev/null |
+                   grep "Creation Date" |
+                   head -1 |
+                   awk -F': ' '{print $2}' |
+                   grep -v "^0000:00:00" | head -1 || true)
+    fi
+
+    # 4. If no CreationDate, try CreateDate (UTC in QuickTime, local time in other formats)
     if [[ -z "$date_str" ]]; then
         date_str=$(exiftool -CreateDate -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null |
                    grep "Create Date" |
