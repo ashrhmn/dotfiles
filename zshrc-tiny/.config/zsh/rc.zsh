@@ -44,4 +44,11 @@ source "$HOME/.config/zsh/config/tools.zsh"
 debug_log "Loading prompt"
 source "$HOME/.config/zsh/config/prompt.zsh"
 
+# edit-command-line: open current command in $EDITOR via Ctrl-X Ctrl-E
+autoload -Uz edit-command-line
+zle -N edit-command-line
+bindkey '^X^E' edit-command-line
+bindkey -M viins '^X^E' edit-command-line
+bindkey -M vicmd '^X^E' edit-command-line
+
 debug_log "User configuration complete"
