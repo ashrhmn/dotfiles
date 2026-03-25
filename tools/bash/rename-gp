@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="2.3.0"
+VERSION="2.3.1"
 
 usage() {
     cat << EOF
@@ -388,9 +388,9 @@ main() {
     while IFS= read -r -d '' json_file; do
         result=$(process_json "$json_file")
         [[ -n "$result" ]] && echo "$result"
-        if [[ "$result" == RENAMED* ]]; then
+        if grep -q "^RENAMED" <<< "$result"; then
             ((rename_count++))
-        elif [[ "$result" == SKIP* ]]; then
+        elif grep -q "^SKIP" <<< "$result"; then
             ((skip_count++))
         fi
     done < <(find "$TARGET_DIR" -type f -name "*.json" -print0 2>/dev/null)
