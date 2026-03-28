@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 usage() {
     cat << EOF
@@ -104,6 +104,13 @@ if ! command -v exiftool &> /dev/null; then
     echo "Error: exiftool is required but not installed"
     exit 1
 fi
+
+# Case-insensitive file existence check (catches jpg vs JPG, etc.)
+ci_exists() {
+    local dir="$1"
+    local name="$2"
+    find "$dir" -maxdepth 1 -iname "$name" -print -quit 2>/dev/null | grep -q .
+}
 
 # Convert exiftool fractional-second specifiers to literal zeros for use with date(1)
 # e.g. "%Y%m%d_%H%M%S%-3f" -> "%Y%m%d_%H%M%S000"
@@ -217,9 +224,9 @@ process_file() {
         return 0
     fi
 
-    if [[ -e "$new_path" ]]; then
+    if ci_exists "$dir_name" "$new_name"; then
         local counter=1
-        while [[ -e "${dir_name}/${formatted_date}_${counter}.${extension}" ]]; do
+        while ci_exists "$dir_name" "${formatted_date}_${counter}.${extension}"; do
             ((counter++))
         done
         new_name="${formatted_date}_${counter}.${extension}"
