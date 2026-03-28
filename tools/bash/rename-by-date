@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 usage() {
     cat << EOF
@@ -11,7 +11,7 @@ Only renames files that have valid date metadata.
 
 Options:
     --dry-run, -n       Show what would be renamed without actually renaming
-    --format <fmt>      Timestamp format (default: %Y%m%d_%H%M%S)
+    --format <fmt>      Timestamp format (default: %Y%m%d_%H%M%S%-3f)
     --help, -h          Show this help message
     --version, -v       Show version information
 
@@ -19,24 +19,29 @@ Supported formats:
     Images: .jpg, .jpeg, .png, .gif, .bmp, .tiff, .webp, .dng, .heic
     Videos: .mp4, .mov, .avi, .mkv, .m4v, .3gp
 
+Format specifiers (exiftool -d syntax):
+    %Y %m %d %H %M %S   standard date/time components
+    %-3f                 3-digit milliseconds (no decimal point), e.g. 528
+    %3f                  3-digit milliseconds with decimal point, e.g. .528
+
 Examples:
     rename-by-date --dry-run ~/Pictures
-    rename-by-date --format "%Y-%m-%d_%H%M%S" ~/Downloads
+    rename-by-date --format "%Y-%m-%d_%H%M%S%-3f" ~/Downloads
     rename-by-date ~/Videos
 
 Note:
     Date extraction priority:
-    1. JSON metadata files (<filename>.<ext>.*.json with photoTakenTime)
+    1. SubSecDateTimeOriginal (EXIF with milliseconds)
     2. DateTimeOriginal (EXIF)
     3. GPS timestamp
-    4. CreateDate
-    5. ModifyDate
-    6. File modification date (last resort)
+    4. CreationDate (QuickTime/MOV - local time with timezone)
+    5. CreateDate
+    6. ModifyDate
+    7. File modification date (last resort)
 
-    If JSON metadata is found, GPS coordinates and other metadata will be
-    written to the image file after renaming (requires jq).
     Files starting with ._ (macOS resource forks) will be skipped.
     Existing files with the same name will be avoided with numeric suffixes.
+
 EOF
 }
 
@@ -45,7 +50,7 @@ show_version() {
 }
 
 DRY_RUN=0
-TIMESTAMP_FORMAT="%Y%m%d_%H%M%S"
+TIMESTAMP_FORMAT="%Y%m%d_%H%M%S%-3f"
 TARGET_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -100,161 +105,83 @@ if ! command -v exiftool &> /dev/null; then
     exit 1
 fi
 
-if ! command -v jq &> /dev/null; then
-    echo "Warning: jq is not installed. JSON metadata extraction will be skipped."
-    echo "Install jq to enable JSON metadata support."
-    echo ""
-fi
-
-extract_date_from_json() {
-    local file="$1"
-    local dir_name=$(dirname "$file")
-    local base_name=$(basename "$file")
-
-    local json_file=$(find "$dir_name" -maxdepth 1 -type f -name "${base_name}.*.json" -print -quit 2>/dev/null)
-
-    if [[ -n "$json_file" && -f "$json_file" ]]; then
-        if ! command -v jq &> /dev/null; then
-            return 1
-        fi
-
-        local timestamp=$(jq -r '.photoTakenTime.timestamp // empty' "$json_file" 2>/dev/null)
-
-        if [[ -n "$timestamp" && "$timestamp" != "null" ]]; then
-            date -d "@$timestamp" "+%Y:%m:%d %H:%M:%S" 2>/dev/null || return 1
-            return 0
-        fi
-    fi
-
-    return 1
-}
-
-write_json_metadata() {
-    local file="$1"
-    local json_file="$2"
-
-    if [[ ! -f "$json_file" ]] || ! command -v jq &> /dev/null; then
-        return 0
-    fi
-
-    local lat=$(jq -r '.geoData.latitude // empty' "$json_file" 2>/dev/null)
-    local lon=$(jq -r '.geoData.longitude // empty' "$json_file" 2>/dev/null)
-    local alt=$(jq -r '.geoData.altitude // empty' "$json_file" 2>/dev/null)
-    local desc=$(jq -r '.description // empty' "$json_file" 2>/dev/null)
-    local title=$(jq -r '.title // empty' "$json_file" 2>/dev/null)
-
-    local exif_args=()
-
-    if [[ -n "$lat" && "$lat" != "null" && "$lat" != "0.0" ]]; then
-        exif_args+=("-GPSLatitude=$lat")
-    fi
-
-    if [[ -n "$lon" && "$lon" != "null" && "$lon" != "0.0" ]]; then
-        exif_args+=("-GPSLongitude=$lon")
-    fi
-
-    if [[ -n "$alt" && "$alt" != "null" && "$alt" != "0.0" ]]; then
-        exif_args+=("-GPSAltitude=$alt")
-    fi
-
-    if [[ -n "$desc" && "$desc" != "null" && "$desc" != "" ]]; then
-        exif_args+=("-Description=$desc")
-        exif_args+=("-ImageDescription=$desc")
-    fi
-
-    if [[ -n "$title" && "$title" != "null" && "$title" != "" ]]; then
-        exif_args+=("-XPTitle=$title")
-    fi
-
-    if [[ ${#exif_args[@]} -gt 0 ]]; then
-        exiftool -overwrite_original "${exif_args[@]}" "$file" &>/dev/null
-    fi
+# Convert exiftool fractional-second specifiers to literal zeros for use with date(1)
+# e.g. "%Y%m%d_%H%M%S%-3f" -> "%Y%m%d_%H%M%S000"
+fmt_for_date() {
+    printf '%s' "$1" | sed 's/%-\?[0-9]*f/000/g'
 }
 
 extract_date() {
     local file="$1"
-    local date_str=""
-    local json_file=""
+    local formatted=""
 
-    local dir_name=$(dirname "$file")
-    local base_name=$(basename "$file")
-    json_file=$(find "$dir_name" -maxdepth 1 -type f -name "${base_name}.*.json" -print -quit 2>/dev/null)
+    # 1. SubSecDateTimeOriginal (DateTimeOriginal + milliseconds; label is "Date/Time Original")
+    formatted=$(exiftool -d "$TIMESTAMP_FORMAT" -SubSecDateTimeOriginal "$file" 2>/dev/null |
+                grep "Date/Time Original" |
+                head -1 |
+                awk -F': ' '{print $2}' |
+                grep -v "^0000" | head -1 || true)
 
-    # 0. HIGHEST PRIORITY: Try JSON metadata file first
-    if [[ -n "$json_file" && -f "$json_file" ]]; then
-        date_str=$(extract_date_from_json "$file")
-        if [[ -n "$date_str" ]]; then
-            echo "$date_str|$json_file"
-            return 0
-        fi
+    # 2. DateTimeOriginal (most accurate - when photo was taken)
+    if [[ -z "$formatted" ]]; then
+        formatted=$(exiftool -d "$TIMESTAMP_FORMAT" -DateTimeOriginal "$file" 2>/dev/null |
+                    grep "Date/Time Original" |
+                    head -1 |
+                    awk -F': ' '{print $2}' |
+                    grep -v "^0000" | head -1 || true)
     fi
 
-    # 1. Try DateTimeOriginal first (most accurate - when photo was taken)
-    date_str=$(exiftool -DateTimeOriginal -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null |
-               grep "Date/Time Original" |
-               head -1 |
-               awk -F': ' '{print $2}' |
-               grep -v "^0000:00:00" | head -1 || true)
-
-    # 2. If no DateTimeOriginal, try GPS timestamp (highly reliable, from satellites)
-    if [[ -z "$date_str" ]]; then
-        date_str=$(exiftool -GPSDateTime "$file" 2>/dev/null |
-                   grep "GPS Date/Time" |
-                   head -1 |
-                   awk -F': ' '{print $2}' |
-                   sed 's/Z$//' || true)
+    # 3. GPS timestamp (highly reliable, from satellites)
+    if [[ -z "$formatted" ]]; then
+        formatted=$(exiftool -d "$TIMESTAMP_FORMAT" -GPSDateTime "$file" 2>/dev/null |
+                    grep "GPS Date/Time" |
+                    head -1 |
+                    awk -F': ' '{print $2}' |
+                    grep -v "^0000" | head -1 || true)
     fi
 
-    # 3. If no GPS timestamp, try CreationDate (QuickTime/MOV - includes timezone offset, local time)
-    if [[ -z "$date_str" ]]; then
-        date_str=$(exiftool -CreationDate "$file" 2>/dev/null |
-                   grep "Creation Date" |
-                   head -1 |
-                   awk -F': ' '{print $2}' |
-                   grep -v "^0000:00:00" | head -1 || true)
+    # 4. CreationDate (QuickTime/MOV - local time with timezone offset)
+    if [[ -z "$formatted" ]]; then
+        formatted=$(exiftool -d "$TIMESTAMP_FORMAT" -CreationDate "$file" 2>/dev/null |
+                    grep "Creation Date" |
+                    head -1 |
+                    awk -F': ' '{print $2}' |
+                    grep -v "^0000" | head -1 || true)
     fi
 
-    # 4. If no CreationDate, try CreateDate (UTC in QuickTime, local time in other formats)
-    if [[ -z "$date_str" ]]; then
-        date_str=$(exiftool -CreateDate -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null |
-                   grep "Create Date" |
-                   head -1 |
-                   awk -F': ' '{print $2}' |
-                   grep -v "^0000:00:00" | head -1 || true)
+    # 5. SubSecCreateDate (CreateDate + milliseconds; label is "Create Date")
+    if [[ -z "$formatted" ]]; then
+        formatted=$(exiftool -d "$TIMESTAMP_FORMAT" -SubSecCreateDate "$file" 2>/dev/null |
+                    grep "Create Date" |
+                    head -1 |
+                    awk -F': ' '{print $2}' |
+                    grep -v "^0000" | head -1 || true)
     fi
 
-    # 4. If no CreateDate, try ModifyDate (EXIF metadata)
-    if [[ -z "$date_str" ]]; then
-        date_str=$(exiftool -ModifyDate -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null |
-                   grep "Modify Date" |
-                   head -1 |
-                   awk -F': ' '{print $2}' |
-                   grep -v "^0000:00:00" | head -1 || true)
+    # 6. ModifyDate (EXIF metadata)
+    if [[ -z "$formatted" ]]; then
+        formatted=$(exiftool -d "$TIMESTAMP_FORMAT" -ModifyDate "$file" 2>/dev/null |
+                    grep "Modify Date" |
+                    head -1 |
+                    awk -F': ' '{print $2}' |
+                    grep -v "^0000" | head -1 || true)
     fi
 
-    # 5. Last resort: use file modification date (file system timestamp)
-    if [[ -z "$date_str" ]]; then
-        date_str=$(exiftool -FileModifyDate -d "%Y:%m:%d %H:%M:%S" "$file" 2>/dev/null |
-                   grep "File Modification Date" |
-                   head -1 |
-                   awk -F': ' '{print $2}' |
-                   sed 's/+.*$//' | sed 's/-.*$//' || true)
+    # 7. Last resort: file modification date (filesystem timestamp)
+    if [[ -z "$formatted" ]]; then
+        formatted=$(exiftool -d "$TIMESTAMP_FORMAT" -FileModifyDate "$file" 2>/dev/null |
+                    grep "File Modification Date" |
+                    head -1 |
+                    awk -F': ' '{print $2}' |
+                    grep -v "^0000" | head -1 || true)
     fi
 
-    echo "$date_str"
-}
-
-format_date() {
-    if [[ -z "$1" ]]; then
-        return 1
-    fi
-    
-    date_fixed=$(echo "$1" | sed 's/:/-/; s/:/-/')
-    date -d "$date_fixed" +"$2" 2>/dev/null || return 1
+    echo "$formatted"
 }
 
 process_file() {
-    file_path="$1"
+    local file_path="$1"
+    local dir_name base_name extension
     dir_name=$(dirname "$file_path")
     base_name=$(basename "$file_path")
     extension="${base_name##*.}"
@@ -274,32 +201,16 @@ process_file() {
         return 0
     fi
 
-    date_result=$(extract_date "$file_path")
+    local formatted_date
+    formatted_date=$(extract_date "$file_path")
 
-    if [[ -z "$date_result" ]]; then
+    if [[ -z "$formatted_date" ]]; then
         echo "SKIP (no date): $base_name"
         return 0
     fi
 
-    local date_str=""
-    local json_file=""
-
-    if [[ "$date_result" == *"|"* ]]; then
-        date_str="${date_result%%|*}"
-        json_file="${date_result##*|}"
-    else
-        date_str="$date_result"
-    fi
-
-    formatted_date=$(format_date "$date_str" "$TIMESTAMP_FORMAT")
-
-    if [[ -z "$formatted_date" ]]; then
-        echo "SKIP (invalid date): $base_name"
-        return 0
-    fi
-
-    new_name="${formatted_date}.${extension}"
-    new_path="${dir_name}/${new_name}"
+    local new_name="${formatted_date}.${extension}"
+    local new_path="${dir_name}/${new_name}"
 
     if [[ "$file_path" == "$new_path" ]]; then
         echo "SKIP (already named): $base_name"
@@ -307,7 +218,7 @@ process_file() {
     fi
 
     if [[ -e "$new_path" ]]; then
-        counter=1
+        local counter=1
         while [[ -e "${dir_name}/${formatted_date}_${counter}.${extension}" ]]; do
             ((counter++))
         done
@@ -316,22 +227,10 @@ process_file() {
     fi
 
     if [[ $DRY_RUN -eq 1 ]]; then
-        if [[ -n "$json_file" ]]; then
-            echo "WOULD RENAME (JSON): $base_name -> $new_name [and delete JSON]"
-        else
-            echo "WOULD RENAME: $base_name -> $new_name"
-        fi
+        echo "WOULD RENAME: $base_name -> $new_name"
     else
         if mv "$file_path" "$new_path"; then
-            if [[ -n "$json_file" ]]; then
-                echo "RENAMED (JSON): $base_name -> $new_name"
-                write_json_metadata "$new_path" "$json_file"
-                if [[ -f "$json_file" ]]; then
-                    rm "$json_file" && echo "  Deleted: $(basename "$json_file")"
-                fi
-            else
-                echo "RENAMED: $base_name -> $new_name"
-            fi
+            echo "RENAMED: $base_name -> $new_name"
         else
             echo "ERROR renaming: $base_name"
         fi
@@ -343,11 +242,11 @@ main() {
         echo "DRY RUN MODE - No files will be renamed"
         echo "=========================================="
     fi
-    
+
     echo "Processing files in: $TARGET_DIR"
     echo ""
-    
-    file_count=0
+
+    local file_count=0
     while IFS= read -r -d '' file; do
         ((file_count++))
         process_file "$file"
@@ -358,11 +257,11 @@ main() {
         -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" -o \
         -iname "*.mkv" -o -iname "*.m4v" -o -iname "*.3gp" \
     \) -print0)
-    
+
     echo ""
     echo "=========================================="
     echo "Media files processed: $file_count"
-    
+
     if [[ $DRY_RUN -eq 1 ]]; then
         echo ""
         echo "This was a dry run. Use without --dry-run to actually rename files."
