@@ -45,6 +45,7 @@ EOF
 ensure_config() {
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$LOG_DIR"
+    mkdir -p "$WORKTREE_DIR"
     if [[ ! -f "$CONFIG_FILE" ]]; then
         echo '{"dirs":[]}' > "$CONFIG_FILE"
     fi
@@ -69,6 +70,18 @@ is_git_repository() {
 is_working_tree_dirty() {
     local path="$1"
     [[ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]]
+}
+
+sanitize_path_component() {
+    local value="$1"
+
+    value=$(echo "$value" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//; s/-+/-/g')
+
+    if [[ -z "$value" ]]; then
+        value="unknown"
+    fi
+
+    echo "$value"
 }
 
 slugify_branch_component() {
@@ -101,6 +114,33 @@ has_upstream_branch() {
 pull_fast_forward() {
     local path="$1"
     git -C "$path" pull --ff-only
+}
+
+get_repo_owner_and_name() {
+    local repo_dir="$1"
+    local remote_url repo_full_name repo_owner repo_name
+
+    remote_url=$(git -C "$repo_dir" config --get remote.origin.url 2>/dev/null || true)
+    if [[ -z "$remote_url" ]]; then
+        return 1
+    fi
+
+    repo_full_name=$(echo "$remote_url" | sed -E 's#\.git$##; s#^[^:]+://##; s#^[^@]+@##; s#^[^:/]+[:/]##')
+    if [[ "$repo_full_name" != */* ]]; then
+        return 1
+    fi
+
+    repo_owner=${repo_full_name%%/*}
+    repo_name=${repo_full_name#*/}
+
+    repo_owner=$(sanitize_path_component "$repo_owner")
+    repo_name=$(sanitize_path_component "$repo_name")
+
+    if [[ -z "$repo_owner" ]] || [[ -z "$repo_name" ]]; then
+        return 1
+    fi
+
+    echo "$repo_owner/$repo_name"
 }
 
 prepare_worktree() {
@@ -349,14 +389,20 @@ process_directory() {
         return 0
     fi
 
-    local branch_slug branch_name repo_name worktree_path
+    local branch_slug branch_name repo_namespace repo_owner repo_name worktree_path
     branch_slug=$(slugify_branch_component "$issue_title")
     branch_name="${branch_slug}-issue-${issue_number}"
-    repo_name=$(basename "$dir")
-    worktree_path="$WORKTREE_DIR/$repo_name/$branch_name"
+    if ! repo_namespace=$(get_repo_owner_and_name "$dir"); then
+        echo "Skipping (could not determine owner/repo from remote.origin.url): $dir"
+        return 0
+    fi
+    repo_owner=${repo_namespace%%/*}
+    repo_name=${repo_namespace#*/}
+    worktree_path="$WORKTREE_DIR/$repo_owner/$repo_name/$branch_name"
 
     echo "Selected issue: #$issue_number - $issue_title"
     echo "Issue URL: $issue_url"
+    echo "Repository: $repo_owner/$repo_name"
     echo "Branch name: $branch_name"
     echo "Worktree path: $worktree_path"
 
