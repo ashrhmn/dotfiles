@@ -2,10 +2,11 @@
 
 set -e
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gh-agent"
 CONFIG_FILE="$CONFIG_DIR/.config.json"
 LOG_DIR="$CONFIG_DIR/logs"
+WORKTREE_DIR="$HOME/.worktrees"
 
 usage() {
     local cmd
@@ -13,7 +14,7 @@ usage() {
     cat << EOF
 Usage: $cmd [COMMAND] [PATH]
 
-Automated issue resolver that monitors git repositories and uses AI Agent to solve issues.
+Automated issue resolver that monitors git repositories and uses AI Agent to solve issues in dedicated git worktrees.
 
 Commands:
     add [PATH]          Add directory to watch list (. for current directory)
@@ -60,6 +61,100 @@ get_absolute_path() {
     fi
 }
 
+is_git_repository() {
+    local path="$1"
+    git -C "$path" rev-parse --git-dir >/dev/null 2>&1
+}
+
+is_working_tree_dirty() {
+    local path="$1"
+    [[ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]]
+}
+
+slugify_branch_component() {
+    local value="$1"
+
+    value=$(echo "$value" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g')
+
+    if [[ -z "$value" ]]; then
+        value="work"
+    fi
+
+    echo "$value"
+}
+
+find_worktree_for_branch() {
+    local repo_dir="$1"
+    local branch="$2"
+
+    git -C "$repo_dir" worktree list --porcelain 2>/dev/null | awk -v target_branch="refs/heads/$branch" '
+        /^worktree / { worktree_path = substr($0, 10) }
+        /^branch / && $2 == target_branch { print worktree_path; exit }
+    '
+}
+
+has_upstream_branch() {
+    local path="$1"
+    git -C "$path" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1
+}
+
+pull_fast_forward() {
+    local path="$1"
+    git -C "$path" pull --ff-only
+}
+
+prepare_worktree() {
+    local repo_dir="$1"
+    local branch_name="$2"
+    local worktree_path="$3"
+    local base_ref="$4"
+
+    mkdir -p "$(dirname "$worktree_path")"
+    git -C "$repo_dir" worktree prune >/dev/null 2>&1 || true
+
+    local existing_branch_worktree
+    existing_branch_worktree=$(find_worktree_for_branch "$repo_dir" "$branch_name")
+
+    if [[ -n "$existing_branch_worktree" ]] && [[ "$existing_branch_worktree" != "$worktree_path" ]]; then
+        echo "Skipping (branch already checked out in another worktree): $existing_branch_worktree"
+        return 1
+    fi
+
+    if [[ -e "$worktree_path" ]] && [[ -z "$existing_branch_worktree" ]]; then
+        echo "Skipping (worktree path already exists but is not registered): $worktree_path"
+        return 1
+    fi
+
+    if [[ "$existing_branch_worktree" == "$worktree_path" ]]; then
+        echo "Reusing existing worktree: $worktree_path"
+        return 0
+    fi
+
+    if git -C "$repo_dir" show-ref --verify --quiet "refs/heads/$branch_name"; then
+        echo "Creating worktree from existing local branch: $branch_name"
+        if ! git -C "$repo_dir" worktree add "$worktree_path" "$branch_name"; then
+            echo "Skipping (failed to create worktree from local branch): $branch_name"
+            return 1
+        fi
+        return 0
+    fi
+
+    if git -C "$repo_dir" ls-remote --exit-code --heads origin "$branch_name" >/dev/null 2>&1; then
+        echo "Creating worktree from remote branch: origin/$branch_name"
+        if ! git -C "$repo_dir" worktree add --track -b "$branch_name" "$worktree_path" "origin/$branch_name"; then
+            echo "Skipping (failed to create worktree from remote branch): origin/$branch_name"
+            return 1
+        fi
+        return 0
+    fi
+
+    echo "Creating worktree and branch: $branch_name"
+    if ! git -C "$repo_dir" worktree add -b "$branch_name" "$worktree_path" "$base_ref"; then
+        echo "Skipping (failed to create new worktree branch): $branch_name"
+        return 1
+    fi
+}
+
 add_directory() {
     local path="$1"
     if [[ -z "$path" ]]; then
@@ -77,7 +172,7 @@ add_directory() {
         exit 1
     fi
 
-    if [[ ! -d "$abs_path/.git" ]]; then
+    if ! is_git_repository "$abs_path"; then
         echo "Error: Not a git repository: $abs_path"
         exit 1
     fi
@@ -213,49 +308,106 @@ process_directory() {
     echo "Processing: $dir"
     echo "========================================"
 
-    cd "$dir" || return 1
+    if ! is_git_repository "$dir"; then
+        echo "Skipping (not a git repository): $dir"
+        return 0
+    fi
 
-    # Check git status
-    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+    if is_working_tree_dirty "$dir"; then
         echo "Skipping (dirty working directory): $dir"
         return 0
     fi
 
-    # Track current branch
-    local original_branch
-    original_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-    if [[ -z "$original_branch" ]]; then
-        echo "Skipping (could not determine branch): $dir"
+    local base_branch
+    base_branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [[ -z "$base_branch" ]] || [[ "$base_branch" == "HEAD" ]]; then
+        echo "Skipping (could not determine base branch): $dir"
         return 0
     fi
 
-    echo "Current branch: $original_branch"
+    echo "Base branch: $base_branch"
 
-    # Check issue count
-    local issue_count
-    issue_count=$(gh issue list --json id 2>/dev/null | jq 'length' 2>/dev/null)
+    echo "Pulling latest changes on base checkout..."
+    if ! pull_fast_forward "$dir" >/dev/null 2>&1; then
+        echo "Skipping (failed to pull latest changes on base checkout): $dir"
+        return 0
+    fi
 
-    if [[ -z "$issue_count" ]] || [[ "$issue_count" == "0" ]]; then
+    local issue_json
+    if ! issue_json=$(cd "$dir" && gh issue list --state open --search "sort:created-asc" --limit 1 --json number,title,url 2>/dev/null); then
+        echo "Skipping (failed to fetch open issues): $dir"
+        return 0
+    fi
+
+    local issue_number issue_title issue_url
+    issue_number=$(echo "$issue_json" | jq -r '.[0].number // empty' 2>/dev/null)
+    issue_title=$(echo "$issue_json" | jq -r '.[0].title // empty' 2>/dev/null)
+    issue_url=$(echo "$issue_json" | jq -r '.[0].url // empty' 2>/dev/null)
+
+    if [[ -z "$issue_number" ]] || [[ -z "$issue_title" ]]; then
         echo "No open issues found, skipping: $dir"
         return 0
     fi
 
-    echo "Found $issue_count open issue(s)"
+    local branch_slug branch_name repo_name worktree_path
+    branch_slug=$(slugify_branch_component "$issue_title")
+    branch_name="${branch_slug}-issue-${issue_number}"
+    repo_name=$(basename "$dir")
+    worktree_path="$WORKTREE_DIR/$repo_name/$branch_name"
 
-    # Pull latest changes before starting work
-    echo "Pulling latest changes..."
-    if ! git pull 2>/dev/null; then
-        echo "Warning: Failed to pull latest changes, continuing anyway..."
+    echo "Selected issue: #$issue_number - $issue_title"
+    echo "Issue URL: $issue_url"
+    echo "Branch name: $branch_name"
+    echo "Worktree path: $worktree_path"
+
+    if ! prepare_worktree "$dir" "$branch_name" "$worktree_path" "HEAD"; then
+        return 0
     fi
 
-    echo "Starting to resolve issues..."
+    if ! is_git_repository "$worktree_path"; then
+        echo "Skipping (worktree was not created correctly): $worktree_path"
+        return 0
+    fi
+
+    if is_working_tree_dirty "$worktree_path"; then
+        echo "Skipping (dirty worktree): $worktree_path"
+        return 0
+    fi
+
+    if has_upstream_branch "$worktree_path"; then
+        echo "Pulling latest changes in worktree..."
+        if ! pull_fast_forward "$worktree_path" >/dev/null 2>&1; then
+            echo "Skipping (failed to pull latest changes in worktree): $worktree_path"
+            return 0
+        fi
+
+        if is_working_tree_dirty "$worktree_path"; then
+            echo "Skipping (worktree became dirty after pull): $worktree_path"
+            return 0
+        fi
+    fi
+
+    echo "Starting to resolve issue #$issue_number..."
 
     # Create log file with timestamp and sanitized directory name
     local timestamp
     timestamp=$(date '+%Y%m%d_%H%M%S')
-    local dir_name
-    dir_name=$(basename "$dir")
-    local log_file="$LOG_DIR/${timestamp}_${dir_name}.json"
+    local log_file="$LOG_DIR/${timestamp}_${repo_name}_issue_${issue_number}.json"
+    local agent_prompt
+    agent_prompt=$(cat <<EOF
+Work only on GitHub issue #$issue_number: $issue_title
+Issue URL: $issue_url
+You are already inside the dedicated git worktree for this task on branch $branch_name at $worktree_path.
+Do not choose another issue.
+Do not create another branch.
+Do not switch branches.
+Implement the solution, ensure all relevant tests pass and build/lint/typecheck succeeds when those commands exist, commit without co-author using conventional commit format if the repo uses it, push to $branch_name, and create a PR via gh cli that references issue #$issue_number.
+After the PR is created, close issue #$issue_number via gh cli.
+If any step fails, stop and explain the error.
+Follow @AGENTS.md and @CLAUDE.md if present in the current directory or accessible added directories.
+Never mention Claude, Claude Code, Codex, GPT, AI, or any LLM in commits, code comments, PR descriptions, or GitHub comments.
+EOF
+)
 
     echo "Logging to: $log_file"
     echo ""
@@ -268,7 +420,10 @@ process_directory() {
     # 1. Save raw JSON to log file with tee
     # 2. Format and display human-friendly output in real-time
     # 3. Capture formatted output for telegram notification
-    claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose "Use gh cli to list open issues and select the highest priority one. Create a descriptively named feature branch for the fix. Implement the solution, ensure all tests pass and build/lint/typecheck succeeds. Commit without co-author using conventional commit format if the repo uses it. Push to the feature branch and create a PR via gh cli that references the issue number. After PR is created, close the issue via gh cli. If any step fails, stop and explain the error. Follow @AGENTS.md and @CLAUDE.md if present in cwd. Never mention Claude, Claude Code, Codex, GPT, AI, or any LLM in commits, code comments, PR descriptions, or GitHub comments." 2>&1 | \
+    (
+        cd "$worktree_path" || exit 1
+        claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose --add-dir "$dir" "$agent_prompt"
+    ) 2>&1 | \
         tee "$log_file" | \
         format_json_stream | \
         tee "$notification_file"
@@ -278,13 +433,6 @@ process_directory() {
         tgn -t "gh-agent: $dir" < "$notification_file" 2>/dev/null >/dev/null || true
     fi
     rm -f "$notification_file"
-
-    # Switch back to original branch
-    if [[ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != "$original_branch" ]]; then
-        echo ""
-        echo "Switching back to: $original_branch"
-        git checkout "$original_branch" 2>/dev/null || true
-    fi
 
     echo "Completed processing: $dir"
 }
