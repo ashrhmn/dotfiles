@@ -468,7 +468,7 @@ EOF
     # 3. Capture formatted output for telegram notification
     (
         cd "$worktree_path" || exit 1
-        claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose --add-dir "$dir" "$agent_prompt"
+        claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose --add-dir "$dir" -- "$agent_prompt"
     ) 2>&1 | \
         tee "$log_file" | \
         format_json_stream | \
