@@ -287,12 +287,149 @@ list_logs() {
     echo "Log directory: $LOG_DIR"
 }
 
+truncate_single_line() {
+    local text="$1"
+    local max_chars="${2:-160}"
+
+    text=$(echo "$text" | tr '\n' ' ' | tr '\r' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')
+
+    if (( ${#text} > max_chars )); then
+        echo "${text:0:max_chars-3}..."
+    else
+        echo "$text"
+    fi
+}
+
+print_preview_block() {
+    local text="$1"
+    local max_lines="${2:-8}"
+    local max_chars="${3:-1200}"
+    local line_count=0
+    local preview
+
+    preview=$(printf '%s\n' "$text" | sed '/^<system-reminder>/,/^<\/system-reminder>/d')
+    preview=${preview//$'\r'/}
+
+    if [[ -z "$preview" ]]; then
+        return
+    fi
+
+    if (( ${#preview} > max_chars )); then
+        preview="${preview:0:max_chars}"$'\n...'
+    fi
+
+    while IFS= read -r preview_line; do
+        ((line_count += 1))
+        if (( line_count > max_lines )); then
+            echo "      ..."
+            break
+        fi
+        echo "      $preview_line"
+    done <<< "$preview"
+}
+
+format_duration_ms() {
+    local duration_ms="$1"
+
+    if [[ -z "$duration_ms" ]] || [[ "$duration_ms" == "null" ]]; then
+        return
+    fi
+
+    awk -v ms="$duration_ms" 'BEGIN { printf "%.1fs", ms / 1000 }'
+}
+
+format_epoch_timestamp() {
+    local epoch="$1"
+
+    if [[ -z "$epoch" ]] || [[ "$epoch" == "null" ]]; then
+        return
+    fi
+
+    date -d "@$epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "$epoch"
+}
+
+summarize_tool_input() {
+    local tool_name="$1"
+    local input_json="$2"
+    local summary=""
+
+    case "$tool_name" in
+        Bash)
+            summary=$(echo "$input_json" | jq -r '.command // empty' 2>/dev/null)
+            ;;
+        Read)
+            local file_path offset limit
+            file_path=$(echo "$input_json" | jq -r '.file_path // empty' 2>/dev/null)
+            offset=$(echo "$input_json" | jq -r '.offset // empty' 2>/dev/null)
+            limit=$(echo "$input_json" | jq -r '.limit // empty' 2>/dev/null)
+            summary="$file_path"
+            if [[ -n "$offset" ]]; then
+                summary="$summary (offset $offset"
+                if [[ -n "$limit" ]]; then
+                    summary="$summary, limit $limit"
+                fi
+                summary="$summary)"
+            elif [[ -n "$limit" ]]; then
+                summary="$summary (limit $limit)"
+            fi
+            ;;
+        Edit)
+            local edit_path
+            edit_path=$(echo "$input_json" | jq -r '.file_path // empty' 2>/dev/null)
+            summary="$edit_path"
+            ;;
+        MultiEdit)
+            local multi_edit_path
+            multi_edit_path=$(echo "$input_json" | jq -r '.file_path // empty' 2>/dev/null)
+            summary="$multi_edit_path"
+            ;;
+        Write)
+            summary=$(echo "$input_json" | jq -r '.file_path // empty' 2>/dev/null)
+            ;;
+        Grep)
+            local pattern grep_path
+            pattern=$(echo "$input_json" | jq -r '.pattern // empty' 2>/dev/null)
+            grep_path=$(echo "$input_json" | jq -r '.path // empty' 2>/dev/null)
+            summary="pattern=$(truncate_single_line "$pattern" 80)"
+            if [[ -n "$grep_path" ]]; then
+                summary="$summary path=$grep_path"
+            fi
+            ;;
+        Glob)
+            local pattern glob_path
+            pattern=$(echo "$input_json" | jq -r '.pattern // empty' 2>/dev/null)
+            glob_path=$(echo "$input_json" | jq -r '.path // empty' 2>/dev/null)
+            summary="pattern=$(truncate_single_line "$pattern" 80)"
+            if [[ -n "$glob_path" ]]; then
+                summary="$summary path=$glob_path"
+            fi
+            ;;
+        LS)
+            summary=$(echo "$input_json" | jq -r '.path // empty' 2>/dev/null)
+            ;;
+        *)
+            summary=$(echo "$input_json" | jq -c '.' 2>/dev/null)
+            ;;
+    esac
+
+    truncate_single_line "$summary" 200
+}
+
 format_json_stream() {
-    local notification_msg=""
     local current_turn=0
+    local line_json
+    local last_assistant_text=""
+    local -A tool_names=()
+    local -A tool_summaries=()
 
     while IFS= read -r line; do
         if [[ -z "$line" ]]; then
+            continue
+        fi
+
+        if ! echo "$line" | jq -e . >/dev/null 2>&1; then
+            echo "!! Raw output"
+            print_preview_block "$line" 8 1200
             continue
         fi
 
@@ -304,40 +441,139 @@ format_json_stream() {
                 local subtype
                 subtype=$(echo "$line" | jq -r '.subtype // empty' 2>/dev/null)
                 if [[ "$subtype" == "init" ]]; then
-                    local cwd model
+                    local cwd model session_id permission_mode output_style
                     cwd=$(echo "$line" | jq -r '.cwd // empty' 2>/dev/null)
                     model=$(echo "$line" | jq -r '.model // empty' 2>/dev/null)
+                    session_id=$(echo "$line" | jq -r '.session_id // empty' 2>/dev/null)
+                    permission_mode=$(echo "$line" | jq -r '.permissionMode // empty' 2>/dev/null)
+                    output_style=$(echo "$line" | jq -r '(.output_style | if type == "object" then .name else . end) // empty' 2>/dev/null)
                     echo "==> Initialized in: $cwd"
                     echo "==> Model: $model"
-                    notification_msg+="Initialized in: $cwd\nModel: $model\n"
+                    if [[ -n "$session_id" ]]; then
+                        echo "==> Session: $session_id"
+                    fi
+                    if [[ -n "$permission_mode" ]]; then
+                        echo "==> Permissions: $permission_mode"
+                    fi
+                    if [[ -n "$output_style" ]]; then
+                        echo "==> Output style: $output_style"
+                    fi
                 fi
                 ;;
             assistant)
-                current_turn=$((current_turn + 1))
-                local content
-                content=$(echo "$line" | jq -r '.message.content[]?.text // empty' 2>/dev/null)
-                if [[ -n "$content" ]]; then
-                    echo ""
-                    echo "--- Turn $current_turn ---"
-                    echo "$content"
-                    notification_msg+="\n--- Turn $current_turn ---\n$content\n"
+                while IFS= read -r line_json; do
+                    local content_type
+                    content_type=$(echo "$line_json" | jq -r '.type // empty' 2>/dev/null)
+
+                    case "$content_type" in
+                        text)
+                            local content
+                            content=$(echo "$line_json" | jq -r '.text // empty' 2>/dev/null)
+                            if [[ -n "$content" ]]; then
+                                current_turn=$((current_turn + 1))
+                                last_assistant_text="$content"
+                                echo ""
+                                echo "--- Turn $current_turn ---"
+                                echo "$content"
+                            fi
+                            ;;
+                        tool_use)
+                            local tool_id tool_name input_json tool_summary
+                            tool_id=$(echo "$line_json" | jq -r '.id // empty' 2>/dev/null)
+                            tool_name=$(echo "$line_json" | jq -r '.name // empty' 2>/dev/null)
+                            input_json=$(echo "$line_json" | jq -c '.input // {}' 2>/dev/null)
+                            tool_summary=$(summarize_tool_input "$tool_name" "$input_json")
+
+                            if [[ -n "$tool_id" ]]; then
+                                tool_names["$tool_id"]="$tool_name"
+                                tool_summaries["$tool_id"]="$tool_summary"
+                            fi
+
+                            echo "--> [$tool_name] $tool_summary"
+                            ;;
+                    esac
+                done < <(echo "$line" | jq -c '.message.content[]?' 2>/dev/null)
+                ;;
+            user)
+                local tool_result_json tool_id tool_name tool_summary tool_status tool_content tool_stderr
+                tool_result_json=$(echo "$line" | jq -c 'first(.message.content[]? | select(.type == "tool_result")) // empty' 2>/dev/null)
+
+                if [[ -z "$tool_result_json" ]]; then
+                    continue
+                fi
+
+                tool_id=$(echo "$tool_result_json" | jq -r '.tool_use_id // empty' 2>/dev/null)
+                tool_name="${tool_names[$tool_id]:-tool}"
+                tool_summary="${tool_summaries[$tool_id]:-}"
+                tool_status=$(echo "$tool_result_json" | jq -r 'if .is_error == true then "error" else "ok" end' 2>/dev/null)
+                tool_content=$(echo "$tool_result_json" | jq -r '.content // empty' 2>/dev/null)
+                tool_stderr=$(echo "$line" | jq -r '.tool_use_result.stderr // empty' 2>/dev/null)
+
+                echo "<-- [$tool_name] $tool_status"
+                if [[ -n "$tool_summary" ]]; then
+                    echo "    $tool_summary"
+                fi
+                if [[ -n "$tool_content" ]]; then
+                    echo "    Output:"
+                    print_preview_block "$tool_content" 8 1200
+                fi
+                if [[ -n "$tool_stderr" ]]; then
+                    echo "    STDERR:"
+                    print_preview_block "$tool_stderr" 8 1200
                 fi
                 ;;
+            rate_limit_event)
+                local rate_limit_status rate_limit_type resets_at overage_resets_at is_using_overage
+                rate_limit_status=$(echo "$line" | jq -r '.rate_limit_info.status // empty' 2>/dev/null)
+                rate_limit_type=$(echo "$line" | jq -r '.rate_limit_info.rateLimitType // empty' 2>/dev/null)
+                resets_at=$(echo "$line" | jq -r '.rate_limit_info.resetsAt // empty' 2>/dev/null)
+                overage_resets_at=$(echo "$line" | jq -r '.rate_limit_info.overageResetsAt // empty' 2>/dev/null)
+                is_using_overage=$(echo "$line" | jq -r '.rate_limit_info.isUsingOverage // false' 2>/dev/null)
+
+                echo "==> Rate limit: $rate_limit_status ($rate_limit_type)"
+                if [[ -n "$resets_at" ]]; then
+                    echo "    Resets at: $(format_epoch_timestamp "$resets_at")"
+                fi
+                if [[ -n "$overage_resets_at" ]]; then
+                    echo "    Overage resets at: $(format_epoch_timestamp "$overage_resets_at")"
+                fi
+                echo "    Using overage: $is_using_overage"
+                ;;
             result)
-                local subtype result
+                local subtype result stop_reason duration_ms duration_api_ms total_cost input_tokens output_tokens cache_read_tokens cache_write_tokens
                 subtype=$(echo "$line" | jq -r '.subtype // empty' 2>/dev/null)
                 result=$(echo "$line" | jq -r '.result // empty' 2>/dev/null)
+                stop_reason=$(echo "$line" | jq -r '.stop_reason // empty' 2>/dev/null)
+                duration_ms=$(echo "$line" | jq -r '.duration_ms // empty' 2>/dev/null)
+                duration_api_ms=$(echo "$line" | jq -r '.duration_api_ms // empty' 2>/dev/null)
+                total_cost=$(echo "$line" | jq -r '.total_cost_usd // empty' 2>/dev/null)
+                input_tokens=$(echo "$line" | jq -r '.usage.input_tokens // empty' 2>/dev/null)
+                output_tokens=$(echo "$line" | jq -r '.usage.output_tokens // empty' 2>/dev/null)
+                cache_read_tokens=$(echo "$line" | jq -r '.usage.cache_read_input_tokens // empty' 2>/dev/null)
+                cache_write_tokens=$(echo "$line" | jq -r '.usage.cache_creation_input_tokens // empty' 2>/dev/null)
                 echo ""
                 echo "==> Result: $subtype"
-                if [[ -n "$result" ]]; then
+                if [[ -n "$stop_reason" ]]; then
+                    echo "    Stop reason: $stop_reason"
+                fi
+                if [[ -n "$duration_ms" ]]; then
+                    echo "    Duration: $(format_duration_ms "$duration_ms") total"
+                    if [[ -n "$duration_api_ms" ]]; then
+                        echo "    API time: $(format_duration_ms "$duration_api_ms")"
+                    fi
+                fi
+                if [[ -n "$total_cost" ]]; then
+                    echo "    Cost: \$${total_cost}"
+                fi
+                if [[ -n "$input_tokens" ]] || [[ -n "$output_tokens" ]] || [[ -n "$cache_read_tokens" ]] || [[ -n "$cache_write_tokens" ]]; then
+                    echo "    Tokens: input=${input_tokens:-0}, output=${output_tokens:-0}, cache_read=${cache_read_tokens:-0}, cache_write=${cache_write_tokens:-0}"
+                fi
+                if [[ -n "$result" ]] && [[ "$result" != "$last_assistant_text" ]]; then
                     echo "$result"
                 fi
-                notification_msg+="\n==> Result: $subtype\n$result"
                 ;;
         esac
     done
-
-    echo "$notification_msg"
 }
 
 process_directory() {
@@ -473,12 +709,20 @@ EOF
         tee "$log_file" | \
         format_json_stream | \
         tee "$notification_file"
+    local pipeline_statuses=("${PIPESTATUS[@]}")
+    local agent_exit_status="${pipeline_statuses[0]:-0}"
 
     # Send telegram notification silently
     if [[ -s "$notification_file" ]]; then
         tgn -t "gh-agent: $dir" < "$notification_file" 2>/dev/null >/dev/null || true
     fi
     rm -f "$notification_file"
+
+    if [[ "$agent_exit_status" -ne 0 ]]; then
+        echo "Agent exited with status: $agent_exit_status"
+        echo "Failed processing: $dir"
+        return 0
+    fi
 
     echo "Completed processing: $dir"
 }
