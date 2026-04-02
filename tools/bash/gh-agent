@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gh-agent"
 CONFIG_FILE="$CONFIG_DIR/.config.json"
 LOG_DIR="$CONFIG_DIR/logs"
@@ -20,11 +20,15 @@ Commands:
     add [PATH]          Add directory to watch list (. for current directory)
     remove [PATH]       Remove directory from watch list
     list                List all watched directories
-    start               Start monitoring (runs forever, checks every 5 minutes)
+    start [--codex]     Start monitoring (runs forever, checks every 5 minutes)
     logs                Show recent log files
     version             Show version information
 
-Options:
+Start options:
+    --claude            Use Claude for the start command (default)
+    --codex             Use Codex for the start command
+
+General options:
     -h, --help          Show this help message
     -v, --version       Show version information
 
@@ -33,7 +37,8 @@ Examples:
     $cmd add /path/to/repo      Add specific directory
     $cmd remove .               Remove current directory
     $cmd list                   Show all watched directories
-    $cmd start                  Start the monitoring service
+    $cmd start                  Start the monitoring service with Claude
+    $cmd start --codex          Start the monitoring service with Codex
     $cmd logs                   List recent log files
 
 Configuration:
@@ -415,7 +420,7 @@ summarize_tool_input() {
     truncate_single_line "$summary" 200
 }
 
-format_json_stream() {
+format_claude_json_stream() {
     local current_turn=0
     local line_json
     local last_assistant_text=""
@@ -576,8 +581,304 @@ format_json_stream() {
     done
 }
 
+format_codex_json_stream() {
+    local current_turn=0
+
+    while IFS= read -r line; do
+        if [[ -z "$line" ]]; then
+            continue
+        fi
+
+        if ! echo "$line" | jq -e . >/dev/null 2>&1; then
+            echo "!! Raw output"
+            print_preview_block "$line" 8 1200
+            continue
+        fi
+
+        local event_type
+        event_type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
+
+        case "$event_type" in
+            thread.started)
+                local thread_id
+                thread_id=$(echo "$line" | jq -r '.thread_id // empty' 2>/dev/null)
+                if [[ -n "$thread_id" ]]; then
+                    echo "==> Thread: $thread_id"
+                fi
+                ;;
+            turn.started)
+                current_turn=$((current_turn + 1))
+                echo ""
+                echo "--- Turn $current_turn ---"
+                ;;
+            item.started)
+                local started_type
+                started_type=$(echo "$line" | jq -r '.item.type // empty' 2>/dev/null)
+
+                case "$started_type" in
+                    command_execution)
+                        local started_command
+                        started_command=$(echo "$line" | jq -r '.item.command // empty' 2>/dev/null)
+                        echo "--> [exec] $(truncate_single_line "$started_command" 200)"
+                        ;;
+                    mcp_tool_call)
+                        local started_server started_tool started_args
+                        started_server=$(echo "$line" | jq -r '.item.server // empty' 2>/dev/null)
+                        started_tool=$(echo "$line" | jq -r '.item.tool // empty' 2>/dev/null)
+                        started_args=$(echo "$line" | jq -c '.item.arguments // {}' 2>/dev/null)
+                        echo "--> [mcp:$started_server/$started_tool] $(truncate_single_line "$started_args" 200)"
+                        ;;
+                    collab_tool_call)
+                        local started_collab_tool
+                        started_collab_tool=$(echo "$line" | jq -r '.item.tool // empty' 2>/dev/null)
+                        echo "--> [collab:$started_collab_tool]"
+                        ;;
+                    web_search)
+                        local started_query
+                        started_query=$(echo "$line" | jq -r '.item.query // empty' 2>/dev/null)
+                        echo "--> [web_search] $(truncate_single_line "$started_query" 200)"
+                        ;;
+                    todo_list)
+                        echo "==> Plan"
+                        while IFS=$'\t' read -r completed text; do
+                            if [[ -z "$text" ]]; then
+                                continue
+                            fi
+                            if [[ "$completed" == "true" ]]; then
+                                echo "    [x] $text"
+                            else
+                                echo "    [ ] $text"
+                            fi
+                        done < <(echo "$line" | jq -r '.item.items[]? | "\(.completed)\t\(.text)"' 2>/dev/null)
+                        ;;
+                esac
+                ;;
+            item.updated)
+                local updated_type
+                updated_type=$(echo "$line" | jq -r '.item.type // empty' 2>/dev/null)
+
+                if [[ "$updated_type" == "todo_list" ]]; then
+                    echo "==> Plan updated"
+                    while IFS=$'\t' read -r completed text; do
+                        if [[ -z "$text" ]]; then
+                            continue
+                        fi
+                        if [[ "$completed" == "true" ]]; then
+                            echo "    [x] $text"
+                        else
+                            echo "    [ ] $text"
+                        fi
+                    done < <(echo "$line" | jq -r '.item.items[]? | "\(.completed)\t\(.text)"' 2>/dev/null)
+                fi
+                ;;
+            item.completed)
+                local completed_type
+                completed_type=$(echo "$line" | jq -r '.item.type // empty' 2>/dev/null)
+
+                case "$completed_type" in
+                    agent_message)
+                        local message_text
+                        message_text=$(echo "$line" | jq -r '.item.text // empty' 2>/dev/null)
+                        if [[ -n "$message_text" ]]; then
+                            echo "$message_text"
+                        fi
+                        ;;
+                    reasoning)
+                        :
+                        ;;
+                    command_execution)
+                        local completed_command completed_status completed_output completed_exit_code
+                        completed_command=$(echo "$line" | jq -r '.item.command // empty' 2>/dev/null)
+                        completed_status=$(echo "$line" | jq -r '.item.status // empty' 2>/dev/null)
+                        completed_output=$(echo "$line" | jq -r '.item.aggregated_output // empty' 2>/dev/null)
+                        completed_exit_code=$(echo "$line" | jq -r '.item.exit_code // empty' 2>/dev/null)
+
+                        echo "<-- [exec] ${completed_status:-completed}"
+                        if [[ -n "$completed_command" ]]; then
+                            echo "    $(truncate_single_line "$completed_command" 200)"
+                        fi
+                        if [[ -n "$completed_exit_code" ]] && [[ "$completed_exit_code" != "null" ]]; then
+                            echo "    Exit code: $completed_exit_code"
+                        fi
+                        if [[ -n "$completed_output" ]]; then
+                            echo "    Output:"
+                            print_preview_block "$completed_output" 8 1200
+                        fi
+                        ;;
+                    file_change)
+                        local patch_status
+                        patch_status=$(echo "$line" | jq -r '.item.status // empty' 2>/dev/null)
+                        echo "<-- [patch] ${patch_status:-completed}"
+                        while IFS=$'\t' read -r kind path; do
+                            local kind_label
+                            if [[ -z "$path" ]]; then
+                                continue
+                            fi
+                            case "$kind" in
+                                add)
+                                    kind_label="A"
+                                    ;;
+                                delete)
+                                    kind_label="D"
+                                    ;;
+                                update)
+                                    kind_label="M"
+                                    ;;
+                                *)
+                                    kind_label="?"
+                                    ;;
+                            esac
+                            echo "    $kind_label $path"
+                        done < <(echo "$line" | jq -r '.item.changes[]? | "\(.kind)\t\(.path)"' 2>/dev/null)
+                        ;;
+                    mcp_tool_call)
+                        local completed_server completed_tool completed_mcp_status completed_args completed_result completed_error
+                        completed_server=$(echo "$line" | jq -r '.item.server // empty' 2>/dev/null)
+                        completed_tool=$(echo "$line" | jq -r '.item.tool // empty' 2>/dev/null)
+                        completed_mcp_status=$(echo "$line" | jq -r '.item.status // empty' 2>/dev/null)
+                        completed_args=$(echo "$line" | jq -c '.item.arguments // {}' 2>/dev/null)
+                        completed_result=$(echo "$line" | jq -c '.item.result.structured_content // .item.result.content // empty' 2>/dev/null)
+                        completed_error=$(echo "$line" | jq -r '.item.error.message // empty' 2>/dev/null)
+
+                        echo "<-- [mcp:$completed_server/$completed_tool] ${completed_mcp_status:-completed}"
+                        if [[ "$completed_args" != "{}" ]] && [[ "$completed_args" != "null" ]] && [[ -n "$completed_args" ]]; then
+                            echo "    Args: $(truncate_single_line "$completed_args" 200)"
+                        fi
+                        if [[ -n "$completed_result" ]] && [[ "$completed_result" != "null" ]] && [[ "$completed_result" != "[]" ]]; then
+                            echo "    Result: $(truncate_single_line "$completed_result" 200)"
+                        fi
+                        if [[ -n "$completed_error" ]]; then
+                            echo "    Error:"
+                            print_preview_block "$completed_error" 8 1200
+                        fi
+                        ;;
+                    collab_tool_call)
+                        local completed_collab_tool completed_collab_status completed_receivers
+                        completed_collab_tool=$(echo "$line" | jq -r '.item.tool // empty' 2>/dev/null)
+                        completed_collab_status=$(echo "$line" | jq -r '.item.status // empty' 2>/dev/null)
+                        completed_receivers=$(echo "$line" | jq -r '.item.receiver_thread_ids[]?' 2>/dev/null | paste -sd ',' -)
+
+                        echo "<-- [collab:$completed_collab_tool] ${completed_collab_status:-completed}"
+                        if [[ -n "$completed_receivers" ]]; then
+                            echo "    Receivers: $completed_receivers"
+                        fi
+                        ;;
+                    web_search)
+                        local completed_query
+                        completed_query=$(echo "$line" | jq -r '.item.query // empty' 2>/dev/null)
+                        echo "<-- [web_search] $(truncate_single_line "$completed_query" 200)"
+                        ;;
+                    todo_list)
+                        echo "==> Plan completed"
+                        while IFS=$'\t' read -r completed text; do
+                            if [[ -z "$text" ]]; then
+                                continue
+                            fi
+                            if [[ "$completed" == "true" ]]; then
+                                echo "    [x] $text"
+                            else
+                                echo "    [ ] $text"
+                            fi
+                        done < <(echo "$line" | jq -r '.item.items[]? | "\(.completed)\t\(.text)"' 2>/dev/null)
+                        ;;
+                    error)
+                        local item_error
+                        item_error=$(echo "$line" | jq -r '.item.message // empty' 2>/dev/null)
+                        if [[ -n "$item_error" ]]; then
+                            echo "ERROR: $item_error"
+                        fi
+                        ;;
+                esac
+                ;;
+            turn.completed)
+                local input_tokens cached_input_tokens output_tokens
+                input_tokens=$(echo "$line" | jq -r '.usage.input_tokens // 0' 2>/dev/null)
+                cached_input_tokens=$(echo "$line" | jq -r '.usage.cached_input_tokens // 0' 2>/dev/null)
+                output_tokens=$(echo "$line" | jq -r '.usage.output_tokens // 0' 2>/dev/null)
+                echo ""
+                echo "==> Turn completed"
+                echo "    Tokens: input=${input_tokens:-0}, cached_input=${cached_input_tokens:-0}, output=${output_tokens:-0}"
+                ;;
+            turn.failed)
+                local failed_message
+                failed_message=$(echo "$line" | jq -r '.error.message // empty' 2>/dev/null)
+                echo ""
+                echo "==> Turn failed"
+                if [[ -n "$failed_message" ]]; then
+                    echo "    $failed_message"
+                fi
+                ;;
+            error)
+                local error_message
+                error_message=$(echo "$line" | jq -r '.message // empty' 2>/dev/null)
+                if [[ -n "$error_message" ]]; then
+                    echo "ERROR: $error_message"
+                fi
+                ;;
+        esac
+    done
+}
+
+run_claude_agent() {
+    local worktree_path="$1"
+    local dir="$2"
+    local agent_prompt="$3"
+    local log_file="$4"
+    local notification_file="$5"
+
+    (
+        cd "$worktree_path" || exit 1
+        claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose --add-dir "$dir" -- "$agent_prompt"
+    ) 2>&1 | \
+        tee "$log_file" | \
+        format_claude_json_stream | \
+        tee "$notification_file"
+
+    local pipeline_statuses=("${PIPESTATUS[@]}")
+    return "${pipeline_statuses[0]:-0}"
+}
+
+run_codex_agent() {
+    local worktree_path="$1"
+    local dir="$2"
+    local agent_prompt="$3"
+    local log_file="$4"
+    local notification_file="$5"
+    local stderr_file last_message_file agent_exit_status
+
+    stderr_file=$(mktemp)
+    last_message_file=$(mktemp)
+
+    if (
+        cd "$worktree_path" || exit 1
+        codex exec --json --color never --dangerously-bypass-approvals-and-sandbox --add-dir "$dir" -o "$last_message_file" -- "$agent_prompt" < /dev/null
+    ) \
+        > >(tee "$log_file" | format_codex_json_stream | tee "$notification_file") \
+        2> >(tee "$stderr_file" >&2); then
+        agent_exit_status=0
+    else
+        agent_exit_status=$?
+    fi
+
+    if [[ -s "$stderr_file" ]]; then
+        {
+            echo ""
+            echo "==> STDERR"
+            cat "$stderr_file"
+        } >> "$notification_file"
+    fi
+
+    if [[ ! -s "$notification_file" ]] && [[ -s "$last_message_file" ]]; then
+        cat "$last_message_file" >> "$notification_file"
+    fi
+
+    rm -f "$stderr_file" "$last_message_file"
+    return "$agent_exit_status"
+}
+
 process_directory() {
     local dir="$1"
+    local agent_provider="${2:-claude}"
 
     echo ""
     echo "========================================"
@@ -674,7 +975,7 @@ process_directory() {
     # Create log file with timestamp and sanitized directory name
     local timestamp
     timestamp=$(date '+%Y%m%d_%H%M%S')
-    local log_file="$LOG_DIR/${timestamp}_${repo_name}_issue_${issue_number}.json"
+    local log_file="$LOG_DIR/${timestamp}_${repo_name}_issue_${issue_number}_${agent_provider}.json"
     local agent_prompt
     agent_prompt=$(cat <<EOF
 Work only on GitHub issue #$issue_number: $issue_title
@@ -686,11 +987,12 @@ Do not switch branches.
 Implement the solution, ensure all relevant tests pass and build/lint/typecheck succeeds when those commands exist, commit without co-author using conventional commit format if the repo uses it, push to $branch_name, and create a PR via gh cli that references issue #$issue_number.
 After the PR is created, close issue #$issue_number via gh cli.
 If any step fails, stop and explain the error.
-Follow @AGENTS.md and @CLAUDE.md if present in the current directory or accessible added directories.
+Follow AGENTS.md and CLAUDE.md if present in the current directory or accessible added directories.
 Never mention Claude, Claude Code, Codex, GPT, AI, or any LLM in commits, code comments, PR descriptions, or GitHub comments.
 EOF
 )
 
+    echo "Agent provider: $agent_provider"
     echo "Logging to: $log_file"
     echo ""
 
@@ -698,23 +1000,24 @@ EOF
     local notification_file
     notification_file=$(mktemp)
 
-    # Stream Agent output in real-time:
-    # 1. Save raw JSON to log file with tee
-    # 2. Format and display human-friendly output in real-time
-    # 3. Capture formatted output for telegram notification
-    (
-        cd "$worktree_path" || exit 1
-        claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose --add-dir "$dir" -- "$agent_prompt"
-    ) 2>&1 | \
-        tee "$log_file" | \
-        format_json_stream | \
-        tee "$notification_file"
-    local pipeline_statuses=("${PIPESTATUS[@]}")
-    local agent_exit_status="${pipeline_statuses[0]:-0}"
+    local agent_exit_status=0
+    case "$agent_provider" in
+        claude)
+            run_claude_agent "$worktree_path" "$dir" "$agent_prompt" "$log_file" "$notification_file" || agent_exit_status=$?
+            ;;
+        codex)
+            run_codex_agent "$worktree_path" "$dir" "$agent_prompt" "$log_file" "$notification_file" || agent_exit_status=$?
+            ;;
+        *)
+            echo "Unsupported agent provider: $agent_provider"
+            rm -f "$notification_file"
+            return 0
+            ;;
+    esac
 
     # Send telegram notification silently
     if [[ -s "$notification_file" ]]; then
-        tgn -t "gh-agent: $dir" < "$notification_file" 2>/dev/null >/dev/null || true
+        tgn -t "gh-agent [$agent_provider]: $dir" < "$notification_file" 2>/dev/null >/dev/null || true
     fi
     rm -f "$notification_file"
 
@@ -741,9 +1044,12 @@ is_fifth_minute() {
 }
 
 start_monitoring() {
+    local agent_provider="${1:-claude}"
+
     ensure_config
 
     echo "Starting $(basename "$0") monitoring service (v$VERSION)"
+    echo "Agent provider: $agent_provider"
     echo "Checking every 5 minutes (00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)"
     echo "Press Ctrl+C to stop"
     echo ""
@@ -782,7 +1088,7 @@ start_monitoring() {
             # Process each directory
             echo "$dirs" | while read -r dir; do
                 if [[ -d "$dir" ]]; then
-                    process_directory "$dir"
+                    process_directory "$dir" "$agent_provider"
                 else
                     echo "Skipping (directory not found): $dir"
                 fi
@@ -824,7 +1130,27 @@ main() {
                 exit 0
                 ;;
             start)
-                start_monitoring
+                shift
+                local agent_provider="claude"
+                while [[ $# -gt 0 ]]; do
+                    case $1 in
+                        --claude)
+                            agent_provider="claude"
+                            shift
+                            ;;
+                        --codex)
+                            agent_provider="codex"
+                            shift
+                            ;;
+                        *)
+                            echo "Unknown option for start: $1"
+                            echo ""
+                            usage
+                            exit 1
+                            ;;
+                    esac
+                done
+                start_monitoring "$agent_provider"
                 exit 0
                 ;;
             version)
