@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION="1.3.0"
+VERSION="1.4.0"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gh-agent"
 CONFIG_FILE="$CONFIG_DIR/.config.json"
 LOG_DIR="$CONFIG_DIR/logs"
@@ -176,6 +176,161 @@ $issue_body
 Issue comments:
 $issue_comments
 EOF
+}
+
+get_current_gh_login() {
+    gh api user --jq '.login' 2>/dev/null
+}
+
+get_issue_runtime_snapshot() {
+    local repo_full_name="$1"
+    local issue_number="$2"
+
+    gh issue view "$issue_number" --repo "$repo_full_name" --json state,comments 2>/dev/null
+}
+
+count_issue_comments_from_snapshot() {
+    local issue_snapshot="$1"
+
+    printf '%s' "$issue_snapshot" | jq -r '(.comments // []) | length'
+}
+
+count_issue_comments_by_author_from_snapshot() {
+    local issue_snapshot="$1"
+    local author_login="$2"
+
+    printf '%s' "$issue_snapshot" | jq -r --arg author_login "$author_login" '
+        (.comments // [])
+        | map(select(.author.login == $author_login))
+        | length
+    '
+}
+
+get_pr_count_for_branch() {
+    local repo_full_name="$1"
+    local branch_name="$2"
+    local pr_json
+
+    if ! pr_json=$(gh pr list --repo "$repo_full_name" --head "$branch_name" --state all --json number 2>/dev/null); then
+        return 1
+    fi
+
+    printf '%s' "$pr_json" | jq -r 'length'
+}
+
+get_remote_branch_sha() {
+    local repo_dir="$1"
+    local branch_name="$2"
+
+    git -C "$repo_dir" ls-remote --heads origin "$branch_name" 2>/dev/null | awk 'NR == 1 { print $1 }'
+}
+
+get_local_head_sha() {
+    local repo_dir="$1"
+
+    git -C "$repo_dir" rev-parse HEAD 2>/dev/null
+}
+
+get_commits_ahead_of_base() {
+    local repo_dir="$1"
+    local base_branch="$2"
+
+    git -C "$repo_dir" rev-list --count "$base_branch..HEAD" 2>/dev/null
+}
+
+validate_agent_outcome() {
+    local worktree_path="$1"
+    local repo_full_name="$2"
+    local issue_number="$3"
+    local branch_name="$4"
+    local base_branch="$5"
+    local gh_login="$6"
+    local issue_agent_comments_before="$7"
+    local pr_count_before="$8"
+    local notification_file="$9"
+
+    local issue_snapshot_after issue_state_after pr_count_after
+    local issue_agent_comments_after local_head_sha remote_branch_sha
+    local commits_ahead_of_base worktree_clean is_remote_synced
+    local validation_flow validation_message
+
+    if ! issue_snapshot_after=$(get_issue_runtime_snapshot "$repo_full_name" "$issue_number"); then
+        validation_message="Post-run validation failed: could not fetch issue state for #$issue_number."
+        echo "$validation_message"
+        printf '\n%s\n' "$validation_message" >> "$notification_file"
+        return 1
+    fi
+
+    issue_state_after=$(printf '%s' "$issue_snapshot_after" | jq -r '.state // ""')
+    issue_agent_comments_after=$(count_issue_comments_by_author_from_snapshot "$issue_snapshot_after" "$gh_login")
+
+    if ! pr_count_after=$(get_pr_count_for_branch "$repo_full_name" "$branch_name"); then
+        validation_message="Post-run validation failed: could not fetch PR state for branch $branch_name."
+        echo "$validation_message"
+        printf '\n%s\n' "$validation_message" >> "$notification_file"
+        return 1
+    fi
+
+    local_head_sha=$(get_local_head_sha "$worktree_path")
+    remote_branch_sha=$(get_remote_branch_sha "$worktree_path" "$branch_name")
+    commits_ahead_of_base=$(get_commits_ahead_of_base "$worktree_path" "$base_branch")
+
+    if is_working_tree_dirty "$worktree_path"; then
+        worktree_clean="no"
+    else
+        worktree_clean="yes"
+    fi
+
+    if [[ -n "$remote_branch_sha" ]] && [[ "$remote_branch_sha" == "$local_head_sha" ]]; then
+        is_remote_synced="yes"
+    else
+        is_remote_synced="no"
+    fi
+
+    if [[ "$worktree_clean" != "yes" ]]; then
+        validation_message="Post-run validation failed: worktree is still dirty after agent run."
+        echo "$validation_message"
+        printf '\n%s\n' "$validation_message" >> "$notification_file"
+        return 1
+    fi
+
+    if [[ "$issue_state_after" == "CLOSED" ]] && (( pr_count_after > 0 )); then
+        if [[ "$is_remote_synced" != "yes" ]]; then
+            validation_message="Post-run validation failed: success flow requires the branch to be pushed, but origin/$branch_name does not match local HEAD."
+            echo "$validation_message"
+            printf '\n%s\n' "$validation_message" >> "$notification_file"
+            return 1
+        fi
+
+        validation_flow="success"
+        validation_message="Post-run validation passed: success flow confirmed with pushed branch, PR present, and issue closed."
+    elif [[ "$issue_state_after" == "CLOSED" ]] && (( pr_count_after == 0 )) && (( issue_agent_comments_after > issue_agent_comments_before )); then
+        if (( commits_ahead_of_base > 0 )) && [[ "$is_remote_synced" != "yes" ]]; then
+            validation_message="Post-run validation failed: blocker flow detected, but branch changes were not pushed to origin/$branch_name."
+            echo "$validation_message"
+            printf '\n%s\n' "$validation_message" >> "$notification_file"
+            return 1
+        fi
+
+        validation_flow="blocker"
+        validation_message="Post-run validation passed: blocker flow confirmed with issue comment, no PR, and issue closed."
+    else
+        validation_message="Post-run validation failed: neither a valid success flow nor a valid blocker flow was completed."
+        echo "$validation_message"
+        printf '\n%s\n' "$validation_message" >> "$notification_file"
+        return 1
+    fi
+
+    {
+        printf '\n==> Post-run validation\n'
+        printf 'Flow: %s\n' "$validation_flow"
+        printf 'Issue state: %s\n' "$issue_state_after"
+        printf 'PR count before/after: %s -> %s\n' "$pr_count_before" "$pr_count_after"
+        printf 'Agent issue comments before/after: %s -> %s\n' "$issue_agent_comments_before" "$issue_agent_comments_after"
+        printf 'Worktree clean: %s\n' "$worktree_clean"
+        printf 'Remote synced to local HEAD: %s\n' "$is_remote_synced"
+        printf '%s\n' "$validation_message"
+    } | tee -a "$notification_file"
 }
 
 prepare_worktree() {
@@ -1007,7 +1162,25 @@ process_directory() {
     local timestamp
     timestamp=$(date '+%Y%m%d_%H%M%S')
     local log_file="$LOG_DIR/${timestamp}_${repo_name}_issue_${issue_number}_${agent_provider}.json"
+    local gh_login issue_snapshot_before issue_agent_comments_before pr_count_before
     local issue_thread_context agent_prompt
+
+    if ! gh_login=$(get_current_gh_login); then
+        echo "Skipping (failed to determine GitHub login for post-run validation): $dir"
+        return 0
+    fi
+
+    if ! issue_snapshot_before=$(get_issue_runtime_snapshot "$repo_full_name" "$issue_number"); then
+        echo "Skipping (failed to fetch initial issue state for validation): $dir"
+        return 0
+    fi
+
+    issue_agent_comments_before=$(count_issue_comments_by_author_from_snapshot "$issue_snapshot_before" "$gh_login")
+    if ! pr_count_before=$(get_pr_count_for_branch "$repo_full_name" "$branch_name"); then
+        echo "Skipping (failed to fetch initial PR state for validation): $dir"
+        return 0
+    fi
+
     if ! issue_thread_context=$(build_issue_thread_context "$repo_full_name" "$issue_number"); then
         echo "Skipping (failed to fetch full issue conversation): $dir"
         return 0
@@ -1029,6 +1202,7 @@ Treat failing verification commands as part of the task. If analyze, test, typec
 Normal completion flow: implement the solution, ensure all relevant tests pass and build/lint/typecheck succeeds when those commands exist, commit without co-author using conventional commit format if the repo uses it, push to $branch_name, and create a PR via gh cli that references issue #$issue_number. After the PR is created, close issue #$issue_number via gh cli.
 Blocker flow: only if you cannot complete the task after reasonable investigation because you need external input, missing access, or an upstream problem you cannot safely fix, do not create a PR. Instead, if there are changes, commit and push the current branch state to $branch_name, add a comment to issue #$issue_number via gh cli describing the blocker and exactly what is needed to unblock it, and close issue #$issue_number via gh cli so it will not be retried until reopened.
 If you hit a blocker, stop only after the blocker flow above is complete and explain the blocker clearly.
+The wrapper will validate the final git and GitHub state after you finish, so do not claim completion unless the required side effects were actually performed.
 Follow AGENTS.md and CLAUDE.md if present in the current directory or accessible added directories.
 Never mention Claude, Claude Code, Codex, GPT, AI, or any LLM in commits, code comments, PR descriptions, or GitHub comments.
 EOF
@@ -1057,16 +1231,37 @@ EOF
             ;;
     esac
 
+    local validation_status=0
+    if validate_agent_outcome \
+        "$worktree_path" \
+        "$repo_full_name" \
+        "$issue_number" \
+        "$branch_name" \
+        "$base_branch" \
+        "$gh_login" \
+        "$issue_agent_comments_before" \
+        "$pr_count_before" \
+        "$notification_file"; then
+        validation_status=0
+    else
+        validation_status=$?
+    fi
+
     # Send telegram notification silently
     if [[ -s "$notification_file" ]]; then
         tgn -t "gh-agent [$agent_provider]: $dir" < "$notification_file" 2>/dev/null >/dev/null || true
     fi
     rm -f "$notification_file"
 
-    if [[ "$agent_exit_status" -ne 0 ]]; then
-        echo "Agent exited with status: $agent_exit_status"
+    if [[ "$validation_status" -ne 0 ]]; then
+        echo "Post-run validation failed"
         echo "Failed processing: $dir"
         return 0
+    fi
+
+    if [[ "$agent_exit_status" -ne 0 ]]; then
+        echo "Agent exited with status: $agent_exit_status"
+        echo "Post-run validation still passed"
     fi
 
     echo "Completed processing: $dir"
