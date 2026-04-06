@@ -2,6 +2,11 @@
 
 debug_log "Loading tool configurations"
 
+# Initialize zsh completion once and prefer the cached dump.
+debug_log "Initializing completion system"
+autoload -Uz compinit && compinit -C
+debug_log "Completion system initialized"
+
 # Bun completions
 debug_log "Loading bun completions"
 safe_source "$HOME/.bun/_bun"
@@ -21,7 +26,7 @@ debug_log "Tabtab loaded"
 # Zoxide (cd replacement)
 debug_log "Initializing zoxide"
 if command -v zoxide &> /dev/null; then
-    eval "$(zoxide init --cmd cd zsh)"
+    eval "$(zoxide init --cmd z zsh)"
     debug_log "Zoxide initialized"
 fi
 
