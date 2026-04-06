@@ -16,6 +16,14 @@ opt.scrolloff = 10 -- start scrolling when 10 lines from top/bottom
 
 opt.wrap = false
 
+-- Enable word wrap for markdown files only
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "markdown",
+  callback = function()
+    vim.opt_local.wrap = true
+  end,
+})
+
 -- search settings
 opt.ignorecase = true -- ignore case when searching
 opt.smartcase = true -- if you include mixed case in your search, assumes you want case-sensitive
