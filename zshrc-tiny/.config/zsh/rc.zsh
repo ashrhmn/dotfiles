@@ -1,8 +1,24 @@
 # Main zsh configuration
 # This is your personal config that won't be modified by random applications
 
+# In-process debug timing avoids forking `date` for every log line.
+zmodload zsh/datetime 2>/dev/null || true
+typeset -gF __zshrc_debug_start=0
+typeset -gF __zshrc_debug_last=0
+
 debug_log() {
-    [[ "$DEBUG_ZSHRC" == "1" ]] && echo "[$(date '+%H:%M:%S.%3N')] DEBUG: $1"
+    [[ "$DEBUG_ZSHRC" == "1" ]] || return 0
+
+    local now=$EPOCHREALTIME
+    if (( __zshrc_debug_start == 0 )); then
+        __zshrc_debug_start=$now
+        __zshrc_debug_last=$now
+    fi
+
+    local since_start=$(( (now - __zshrc_debug_start) * 1000.0 ))
+    local since_last=$(( (now - __zshrc_debug_last) * 1000.0 ))
+    printf '[%8.3f ms | +%8.3f ms] DEBUG: %s\n' "$since_start" "$since_last" "$1"
+    __zshrc_debug_last=$now
 }
 
 debug_log "Loading user configuration"
