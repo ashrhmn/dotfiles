@@ -25,10 +25,12 @@ return {
         },
       })
 
-      -- Set mapping for searching a session.
-      -- ⚠️ This will only work if Telescope.nvim is installed
-      vim.keymap.set("n", "<leader>ls", require("auto-session.session-lens").search_session, {
+      -- Open the session picker through auto-session's public command.
+      -- Recent auto-session versions no longer expose the old
+      -- `auto-session.session-lens` Lua module path.
+      vim.keymap.set("n", "<leader>ls", "<cmd>AutoSession search<CR>", {
         noremap = true,
+        desc = "Search sessions",
       })
     end,
   },
