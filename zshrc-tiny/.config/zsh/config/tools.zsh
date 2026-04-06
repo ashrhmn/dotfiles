@@ -32,13 +32,6 @@ if command -v fnm &> /dev/null; then
     debug_log "fnm initialized"
 fi
 
-# Tmuxifier
-debug_log "Initializing tmuxifier"
-if command -v tmuxifier &> /dev/null; then
-    eval "$(tmuxifier init -)"
-    debug_log "Tmuxifier initialized"
-fi
-
 # fzf (fuzzy finder)
 debug_log "Loading fzf"
 if command -v fzf &> /dev/null; then

@@ -47,8 +47,5 @@ export PATH="$PATH:/Users/ash/.local/bin"
 # Cargo (Rust)
 export PATH="/home/ash/.cargo/bin:$PATH"
 
-# Tmuxifier
-export PATH="$HOME/.tmux/plugins/tmuxifier/bin:$PATH"
-
 # OpenCode
 export PATH=/home/ash/.opencode/bin:$PATH
