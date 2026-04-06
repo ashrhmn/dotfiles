@@ -8,10 +8,10 @@ safe_source "$HOME/.bun/_bun"
 debug_log "Bun completions loaded"
 
 # Stripe completion
-debug_log "Loading Stripe completion"
-fpath=(~/.stripe $fpath)
-autoload -Uz compinit && compinit -i
-debug_log "Stripe completion loaded"
+# debug_log "Loading Stripe completion"
+# fpath=(~/.stripe $fpath)
+# autoload -Uz compinit && compinit -i
+# debug_log "Stripe completion loaded"
 
 # Tabtab completion
 debug_log "Loading tabtab"
@@ -26,11 +26,26 @@ if command -v zoxide &> /dev/null; then
 fi
 
 # fnm (Fast Node Manager)
-debug_log "Initializing fnm"
-if command -v fnm &> /dev/null; then
-    eval "$(fnm env --use-on-cd --version-file-strategy=recursive)"
-    debug_log "fnm initialized"
-fi
+maybe_init_fnm() {
+    [[ -n ${__FNM_INIT_DONE:-} ]] && return 0
+    command -v fnm &> /dev/null || return 0
+
+    local dir=$PWD
+    while [[ "$dir" != "/" ]]; do
+        if [[ -f "$dir/.nvmrc" || -f "$dir/.node-version" ]]; then
+            debug_log "Initializing fnm"
+            eval "$(fnm env --use-on-cd --version-file-strategy=recursive)"
+            __FNM_INIT_DONE=1
+            debug_log "fnm initialized"
+            return 0
+        fi
+        dir=${dir:h}
+    done
+}
+
+autoload -Uz add-zsh-hook
+add-zsh-hook chpwd maybe_init_fnm
+maybe_init_fnm
 
 # fzf (fuzzy finder)
 debug_log "Loading fzf"
