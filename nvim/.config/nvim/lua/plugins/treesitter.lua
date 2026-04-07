@@ -18,7 +18,7 @@ return {
         "yaml",
         "html",
         "css",
-        "prisma",
+        -- "prisma",
         "markdown",
         "markdown_inline",
         "bash",
