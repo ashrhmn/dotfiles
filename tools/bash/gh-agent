@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION="1.5.0"
+VERSION="2.0.0"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gh-agent"
 CONFIG_FILE="$CONFIG_DIR/.config.json"
 LOG_DIR="$CONFIG_DIR/logs"
@@ -1155,6 +1155,226 @@ run_codex_agent() {
     return "$agent_exit_status"
 }
 
+get_default_branch() {
+    local repo_full_name="$1"
+    gh repo view "$repo_full_name" --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null
+}
+
+copy_env_files() {
+    local source_dir="$1"
+    local target_dir="$2"
+    local env_file
+
+    for env_file in "$source_dir"/.env "$source_dir"/.env.*; do
+        if [[ -f "$env_file" ]]; then
+            cp "$env_file" "$target_dir/" 2>/dev/null || true
+        fi
+    done
+}
+
+ensure_gh_agent_conflict_label() {
+    local repo_full_name="$1"
+
+    if ! gh label list --repo "$repo_full_name" --json name --jq '.[].name' 2>/dev/null | grep -qx "gh-agent-conflict"; then
+        gh label create "gh-agent-conflict" \
+            --repo "$repo_full_name" \
+            --color "d93f0b" \
+            --description "gh-agent: merge conflict requires resolution" \
+            2>/dev/null || true
+    fi
+}
+
+create_conflict_issue() {
+    local repo_full_name="$1"
+    local pr_number="$2"
+    local branch_name="$3"
+    local issue_number="$4"
+    local issue_title="$5"
+
+    ensure_gh_agent_conflict_label "$repo_full_name"
+
+    local body
+    body=$(cat <<EOF
+Merge conflict detected between feature branch \`$branch_name\` and \`gh-agent\`.
+
+**Pull Request:** #$pr_number
+**Feature branch:** \`$branch_name\` (from issue #$issue_number: $issue_title)
+
+To resolve:
+1. Create a new branch from \`gh-agent\`
+2. Merge \`$branch_name\` into it and resolve all conflicts
+3. Push the resolution branch
+4. Create a PR targeting \`gh-agent\` and merge it
+5. Close this issue
+
+Check issue #$issue_number to understand what changes \`$branch_name\` introduces when deciding how to resolve conflicts.
+EOF
+)
+
+    gh issue create \
+        --repo "$repo_full_name" \
+        --title "gh-agent conflict: $branch_name into gh-agent (PR #$pr_number)" \
+        --body "$body" \
+        --label "gh-agent-conflict" \
+        2>/dev/null || echo "Warning: could not create conflict issue for PR #$pr_number." >&2
+}
+
+get_next_issue() {
+    local repo_full_name="$1"
+    local issue_json
+
+    issue_json=$(gh issue list \
+        --repo "$repo_full_name" \
+        --label "gh-agent-conflict" \
+        --state open \
+        --search "sort:created-asc" \
+        --limit 1 \
+        --json number,title,url 2>/dev/null) || issue_json='[]'
+
+    if [[ "$(echo "$issue_json" | jq -r '.[0].number // empty' 2>/dev/null)" != "" ]]; then
+        echo "$issue_json"
+        return 0
+    fi
+
+    gh issue list \
+        --repo "$repo_full_name" \
+        --state open \
+        --search "sort:created-asc" \
+        --limit 1 \
+        --json number,title,url 2>/dev/null
+}
+
+ensure_gh_agent_branch() {
+    local repo_dir="$1"
+    local repo_full_name="$2"
+    local repo_owner="$3"
+    local repo_name="$4"
+    local default_branch="$5"
+    local dry_run="${6:-false}"
+
+    local gh_agent_worktree="$WORKTREE_DIR/$repo_owner/$repo_name/gh-agent"
+
+    if [[ "$dry_run" == "true" ]]; then
+        echo "Dry run: skipping gh-agent branch setup." >&2
+        echo "$gh_agent_worktree"
+        return 0
+    fi
+
+    # Fetch from origin; does not modify the base dir working tree
+    git -C "$repo_dir" fetch origin >/dev/null 2>&1 || true
+    git -C "$repo_dir" worktree prune >/dev/null 2>&1 || true
+
+    mkdir -p "$(dirname "$gh_agent_worktree")"
+
+    local existing_worktree
+    existing_worktree=$(find_worktree_for_branch "$repo_dir" "gh-agent")
+
+    if [[ -n "$existing_worktree" ]] && [[ "$existing_worktree" != "$gh_agent_worktree" ]]; then
+        echo "gh-agent branch checked out at a different path: $existing_worktree" >&2
+        gh_agent_worktree="$existing_worktree"
+    elif [[ "$existing_worktree" == "$gh_agent_worktree" ]]; then
+        echo "Reusing existing gh-agent worktree: $gh_agent_worktree" >&2
+    elif git -C "$repo_dir" show-ref --verify --quiet "refs/heads/gh-agent"; then
+        echo "Creating gh-agent worktree from existing local branch" >&2
+        if ! git -C "$repo_dir" worktree add "$gh_agent_worktree" "gh-agent" 2>/dev/null; then
+            echo "Failed to add gh-agent worktree from local branch" >&2
+            return 1
+        fi
+        copy_env_files "$repo_dir" "$gh_agent_worktree"
+    elif git -C "$repo_dir" ls-remote --exit-code --heads origin "gh-agent" >/dev/null 2>&1; then
+        echo "Creating gh-agent worktree from remote branch" >&2
+        if ! git -C "$repo_dir" worktree add --track -b "gh-agent" "$gh_agent_worktree" "origin/gh-agent" 2>/dev/null; then
+            echo "Failed to add gh-agent worktree from remote branch" >&2
+            return 1
+        fi
+        copy_env_files "$repo_dir" "$gh_agent_worktree"
+    else
+        echo "Creating gh-agent branch from origin/$default_branch" >&2
+        if ! git -C "$repo_dir" worktree add -b "gh-agent" "$gh_agent_worktree" "origin/$default_branch" 2>/dev/null; then
+            echo "Failed to create gh-agent branch and worktree" >&2
+            return 1
+        fi
+        copy_env_files "$repo_dir" "$gh_agent_worktree"
+    fi
+
+    # Sync default branch into gh-agent via PR; idempotent
+    echo "Checking for new changes from $default_branch to sync into gh-agent..." >&2
+
+    local existing_sync_pr_number
+    existing_sync_pr_number=$(gh pr list \
+        --repo "$repo_full_name" \
+        --head "$default_branch" \
+        --base "gh-agent" \
+        --state open \
+        --json number \
+        --jq '.[0].number // empty' 2>/dev/null)
+
+    local sync_pr_number
+    if [[ -n "$existing_sync_pr_number" ]]; then
+        sync_pr_number="$existing_sync_pr_number"
+        echo "Found existing sync PR #$sync_pr_number, merging..." >&2
+    else
+        local sync_pr_url
+        if sync_pr_url=$(gh pr create \
+            --repo "$repo_full_name" \
+            --head "$default_branch" \
+            --base "gh-agent" \
+            --title "Sync $default_branch into gh-agent" \
+            --body "Automated sync of upstream $default_branch changes into gh-agent staging branch." \
+            2>/dev/null); then
+            sync_pr_number=$(echo "$sync_pr_url" | grep -oE '[0-9]+$')
+            echo "Created sync PR #$sync_pr_number, merging..." >&2
+        else
+            echo "No new changes to sync from $default_branch into gh-agent." >&2
+        fi
+    fi
+
+    if [[ -n "$sync_pr_number" ]]; then
+        if gh pr merge "$sync_pr_number" --repo "$repo_full_name" --merge 2>/dev/null; then
+            echo "Synced $default_branch into gh-agent via PR #$sync_pr_number" >&2
+            git -C "$gh_agent_worktree" pull --ff-only >/dev/null 2>&1 || true
+        else
+            echo "Warning: failed to merge sync PR #$sync_pr_number" >&2
+        fi
+    fi
+
+    echo "$gh_agent_worktree"
+}
+
+sync_feature_to_gh_agent() {
+    local gh_agent_worktree="$1"
+    local repo_full_name="$2"
+    local branch_name="$3"
+    local issue_number="$4"
+    local issue_title="$5"
+
+    echo "Creating PR to merge $branch_name into gh-agent..."
+
+    local pr_url pr_number
+    if ! pr_url=$(gh pr create \
+        --repo "$repo_full_name" \
+        --head "$branch_name" \
+        --base "gh-agent" \
+        --title "merge $branch_name into gh-agent" \
+        --body "Merging feature branch for issue #$issue_number: $issue_title into gh-agent staging branch." \
+        2>/dev/null); then
+        echo "Warning: could not create PR for $branch_name into gh-agent (may already exist or no changes)."
+        return 0
+    fi
+
+    pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
+    echo "Created PR #$pr_number: $pr_url"
+
+    echo "Merging PR #$pr_number into gh-agent..."
+    if gh pr merge "$pr_number" --repo "$repo_full_name" --merge 2>/dev/null; then
+        echo "Successfully merged $branch_name into gh-agent via PR #$pr_number."
+        git -C "$gh_agent_worktree" pull --ff-only >/dev/null 2>&1 || true
+    else
+        echo "Merge conflict in PR #$pr_number. Creating conflict issue..."
+        create_conflict_issue "$repo_full_name" "$pr_number" "$branch_name" "$issue_number" "$issue_title"
+    fi
+}
+
 process_directory() {
     local dir="$1"
     local agent_provider="${2:-claude}"
@@ -1170,36 +1390,36 @@ process_directory() {
         return 0
     fi
 
-    if is_working_tree_dirty "$dir"; then
-        if [[ "$dry_run" == "true" ]]; then
-            echo "Dry run note: real run would skip because the base working directory is dirty."
-        else
-            echo "Skipping (dirty working directory): $dir"
-            return 0
-        fi
-    fi
-
-    local base_branch
-    base_branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)
-    if [[ -z "$base_branch" ]] || [[ "$base_branch" == "HEAD" ]]; then
-        echo "Skipping (could not determine base branch): $dir"
+    # Determine repo identity (read-only, does not modify base dir working tree)
+    local repo_namespace repo_owner repo_name repo_full_name
+    if ! repo_namespace=$(get_repo_owner_and_name "$dir"); then
+        echo "Skipping (could not determine owner/repo from remote.origin.url): $dir"
         return 0
     fi
+    repo_owner=${repo_namespace%%/*}
+    repo_name=${repo_namespace#*/}
+    repo_full_name="$repo_owner/$repo_name"
 
-    echo "Base branch: $base_branch"
-
-    if [[ "$dry_run" == "true" ]]; then
-        echo "Dry run: skipping base checkout pull."
-    else
-        echo "Pulling latest changes on base checkout..."
-        if ! pull_fast_forward "$dir" >/dev/null 2>&1; then
-            echo "Skipping (failed to pull latest changes on base checkout): $dir"
-            return 0
-        fi
+    # Determine default branch via gh CLI
+    local default_branch
+    if ! default_branch=$(get_default_branch "$repo_full_name") || [[ -z "$default_branch" ]]; then
+        echo "Skipping (could not determine default branch): $dir"
+        return 0
     fi
+    echo "Default branch: $default_branch"
 
+    # Ensure gh-agent branch and worktree exist and are synced with the default branch.
+    # This is the only place that touches git operations; the base dir working tree is never modified.
+    local gh_agent_worktree
+    if ! gh_agent_worktree=$(ensure_gh_agent_branch "$dir" "$repo_full_name" "$repo_owner" "$repo_name" "$default_branch" "$dry_run"); then
+        echo "Skipping (could not ensure gh-agent branch): $dir"
+        return 0
+    fi
+    echo "gh-agent worktree: $gh_agent_worktree"
+
+    # Fetch next issue, prioritizing conflict resolution issues
     local issue_json
-    if ! issue_json=$(cd "$dir" && gh issue list --state open --search "sort:created-asc" --limit 1 --json number,title,url 2>/dev/null); then
+    if ! issue_json=$(get_next_issue "$repo_full_name"); then
         echo "Skipping (failed to fetch open issues): $dir"
         return 0
     fi
@@ -1214,16 +1434,9 @@ process_directory() {
         return 0
     fi
 
-    local branch_slug branch_name repo_namespace repo_owner repo_name repo_full_name worktree_path
+    local branch_slug branch_name worktree_path
     branch_slug=$(slugify_branch_component "$issue_title")
     branch_name="${branch_slug}-issue-${issue_number}"
-    if ! repo_namespace=$(get_repo_owner_and_name "$dir"); then
-        echo "Skipping (could not determine owner/repo from remote.origin.url): $dir"
-        return 0
-    fi
-    repo_owner=${repo_namespace%%/*}
-    repo_name=${repo_namespace#*/}
-    repo_full_name="$repo_owner/$repo_name"
     worktree_path="$WORKTREE_DIR/$repo_owner/$repo_name/$branch_name"
 
     echo "Selected issue: #$issue_number - $issue_title"
@@ -1241,7 +1454,8 @@ process_directory() {
     if [[ "$dry_run" == "true" ]]; then
         echo "Dry run: skipping worktree creation and worktree pull."
     else
-        if ! prepare_worktree "$dir" "$branch_name" "$worktree_path" "HEAD"; then
+        # Feature branch is created from gh-agent, not from the base dir HEAD
+        if ! prepare_worktree "$dir" "$branch_name" "$worktree_path" "gh-agent"; then
             return 0
         fi
 
@@ -1254,6 +1468,9 @@ process_directory() {
             echo "Skipping (dirty worktree): $worktree_path"
             return 0
         fi
+
+        # Copy .env files from base dir so the agent has access to local config
+        copy_env_files "$dir" "$worktree_path"
 
         if has_upstream_branch "$worktree_path"; then
             echo "Pulling latest changes in worktree..."
@@ -1323,7 +1540,7 @@ Here is the current issue conversation snapshot for convenience:
 $issue_thread_context
 
 Treat failing verification commands as part of the task. If analyze, test, typecheck, lint, or build commands fail, investigate and fix them when it is reasonably possible and necessary to complete the branch. Do not assume a failing command is an automatic blocker, and do not assume an existing repo error is out of scope if it blocks successful completion on this branch.
-Normal completion flow: implement the solution, ensure all relevant tests pass and build/lint/typecheck succeeds when those commands exist, commit without co-author using conventional commit format if the repo uses it, push to $branch_name, and create a PR via gh cli that references issue #$issue_number. After the PR is created, close issue #$issue_number via gh cli.
+Normal completion flow: implement the solution, ensure all relevant tests pass and build/lint/typecheck succeeds when those commands exist, commit without co-author using conventional commit format if the repo uses it, push to $branch_name, and create a PR via gh cli targeting $default_branch that references issue #$issue_number. After the PR is created, close issue #$issue_number via gh cli.
 Blocker flow: only if you cannot complete the task after reasonable investigation because you need external input, missing access, or an upstream problem you cannot safely fix, do not create a PR. Instead, if there are changes, commit and push the current branch state to $branch_name, add a comment to issue #$issue_number via gh cli describing the blocker and exactly what is needed to unblock it, and close issue #$issue_number via gh cli so it will not be retried until reopened.
 If you hit a blocker, stop only after the blocker flow above is complete and explain the blocker clearly.
 The wrapper will validate the final git and GitHub state after you finish, so do not claim completion unless the required side effects were actually performed.
@@ -1361,7 +1578,7 @@ EOF
         "$repo_full_name" \
         "$issue_number" \
         "$branch_name" \
-        "$base_branch" \
+        "$default_branch" \
         "$gh_login" \
         "$issue_agent_comments_before" \
         "$pr_count_before" \
@@ -1387,6 +1604,14 @@ EOF
         echo "Agent exited with status: $agent_exit_status"
         echo "Post-run validation still passed"
     fi
+
+    # Merge the completed feature branch into gh-agent via PR
+    sync_feature_to_gh_agent \
+        "$gh_agent_worktree" \
+        "$repo_full_name" \
+        "$branch_name" \
+        "$issue_number" \
+        "$issue_title"
 
     echo "Completed processing: $dir"
 }
