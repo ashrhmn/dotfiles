@@ -1297,6 +1297,15 @@ ensure_gh_agent_branch() {
         copy_env_files "$repo_dir" "$gh_agent_worktree"
     fi
 
+    # Push gh-agent to origin if it has no upstream yet (first-time creation)
+    if ! git -C "$gh_agent_worktree" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+        echo "Pushing gh-agent to origin for the first time..." >&2
+        if ! git -C "$gh_agent_worktree" push -u origin "gh-agent" >/dev/null 2>&1; then
+            echo "Failed to push gh-agent to origin" >&2
+            return 1
+        fi
+    fi
+
     # Sync default branch into gh-agent via PR; idempotent
     echo "Checking for new changes from $default_branch to sync into gh-agent..." >&2
 
