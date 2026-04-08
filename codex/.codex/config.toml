@@ -73,7 +73,7 @@ approval_policy = "never"
 
 # OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
 sandbox_mode = "danger-full-access"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "medium"
 personality = "pragmatic"
 
 # Extra settings when sandbox_mode = "workspace-write".
@@ -191,13 +191,37 @@ experimental_use_exec_command_tool = false
 [notice]
 hide_rate_limit_model_nudge = true
 
-[notice]
-hide_rate_limit_model_nudge = true
-
 [notice.model_migrations]
 "gpt-5.1-codex-max" = "gpt-5.2-codex"
 "gpt-5.2-codex" = "gpt-5.3-codex"
 "gpt-5.3-codex" = "gpt-5.4"
+
+[projects."/home/ash/clones/ashrhmn/ledgeo"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/ledgeo-rs"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/Krown-Network/Node"]
+trust_level = "trusted"
+
+[projects."/home/ash/dotfiles"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/ledgeo-landing"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/Krown-Network/qastle-api"]
+trust_level = "trusted"
+
+[projects."/home/ash"]
+trust_level = "trusted"
+
+[plugins."github@openai-curated"]
+enabled = true
+
+[plugins."google-drive@openai-curated"]
+enabled = true
 
 # Reserved for future TUI-specific options.
 

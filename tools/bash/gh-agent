@@ -1301,14 +1301,16 @@ ensure_gh_agent_branch() {
     if git -C "$gh_agent_worktree" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
         echo "Pulling remote gh-agent changes..." >&2
         if ! git -C "$gh_agent_worktree" pull --ff-only >/dev/null 2>&1; then
-            echo "Warning: could not fast-forward gh-agent from remote, remote may have diverged" >&2
+            echo "Error: could not fast-forward gh-agent from remote, remote may have diverged" >&2
+            return 1
         fi
     fi
 
     # Step 2: push local gh-agent state to remote (publishes branch on first run, syncs otherwise)
     echo "Pushing gh-agent to origin..." >&2
     if ! git -C "$gh_agent_worktree" push -u origin "gh-agent" >/dev/null 2>&1; then
-        echo "Warning: failed to push gh-agent to origin" >&2
+        echo "Error: failed to push gh-agent to origin" >&2
+        return 1
     fi
 
     # Step 3: merge default branch into gh-agent via PR
@@ -1348,12 +1350,16 @@ ensure_gh_agent_branch() {
         if gh pr merge "$sync_pr_number" --repo "$repo_full_name" --merge 2>/dev/null; then
             echo "Synced $default_branch into gh-agent via PR #$sync_pr_number" >&2
         else
-            echo "Warning: failed to merge sync PR #$sync_pr_number" >&2
+            echo "Error: failed to merge sync PR #$sync_pr_number" >&2
+            return 1
         fi
     fi
 
     # Step 4: pull gh-agent after merge to bring local worktree up to date
-    git -C "$gh_agent_worktree" pull --ff-only >/dev/null 2>&1 || true
+    if ! git -C "$gh_agent_worktree" pull --ff-only >/dev/null 2>&1; then
+        echo "Error: failed to pull gh-agent after merge" >&2
+        return 1
+    fi
 
     echo "$gh_agent_worktree"
 }
