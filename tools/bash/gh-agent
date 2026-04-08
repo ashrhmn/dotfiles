@@ -1297,17 +1297,22 @@ ensure_gh_agent_branch() {
         copy_env_files "$repo_dir" "$gh_agent_worktree"
     fi
 
-    # Push gh-agent to origin if it has no upstream yet (first-time creation)
-    if ! git -C "$gh_agent_worktree" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
-        echo "Pushing gh-agent to origin for the first time..." >&2
-        if ! git -C "$gh_agent_worktree" push -u origin "gh-agent" >/dev/null 2>&1; then
-            echo "Failed to push gh-agent to origin" >&2
-            return 1
+    # Step 1: pull any remote gh-agent changes (another machine may have pushed to it)
+    if git -C "$gh_agent_worktree" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+        echo "Pulling remote gh-agent changes..." >&2
+        if ! git -C "$gh_agent_worktree" pull --ff-only >/dev/null 2>&1; then
+            echo "Warning: could not fast-forward gh-agent from remote, remote may have diverged" >&2
         fi
     fi
 
-    # Sync default branch into gh-agent via PR; idempotent
-    echo "Checking for new changes from $default_branch to sync into gh-agent..." >&2
+    # Step 2: push local gh-agent state to remote (publishes branch on first run, syncs otherwise)
+    echo "Pushing gh-agent to origin..." >&2
+    if ! git -C "$gh_agent_worktree" push -u origin "gh-agent" >/dev/null 2>&1; then
+        echo "Warning: failed to push gh-agent to origin" >&2
+    fi
+
+    # Step 3: merge default branch into gh-agent via PR
+    echo "Checking for changes from $default_branch to sync into gh-agent..." >&2
 
     local existing_sync_pr_number
     existing_sync_pr_number=$(gh pr list \
@@ -1330,22 +1335,25 @@ ensure_gh_agent_branch() {
             --base "gh-agent" \
             --title "Sync $default_branch into gh-agent" \
             --body "Automated sync of upstream $default_branch changes into gh-agent staging branch." \
-            2>/dev/null); then
+            2>&1); then
             sync_pr_number=$(echo "$sync_pr_url" | grep -oE '[0-9]+$')
-            echo "Created sync PR #$sync_pr_number, merging..." >&2
+            echo "Created sync PR #$sync_pr_number" >&2
         else
             echo "No new changes to sync from $default_branch into gh-agent." >&2
         fi
     fi
 
     if [[ -n "$sync_pr_number" ]]; then
+        echo "Merging sync PR #$sync_pr_number..." >&2
         if gh pr merge "$sync_pr_number" --repo "$repo_full_name" --merge 2>/dev/null; then
             echo "Synced $default_branch into gh-agent via PR #$sync_pr_number" >&2
-            git -C "$gh_agent_worktree" pull --ff-only >/dev/null 2>&1 || true
         else
             echo "Warning: failed to merge sync PR #$sync_pr_number" >&2
         fi
     fi
+
+    # Step 4: pull gh-agent after merge to bring local worktree up to date
+    git -C "$gh_agent_worktree" pull --ff-only >/dev/null 2>&1 || true
 
     echo "$gh_agent_worktree"
 }
