@@ -5,6 +5,7 @@ return {
 	opts = {
 		-- Enable the modules you want
 		bigfile = { enabled = true }, -- Better performance for large files
+		picker = { enabled = true },
 		notifier = {
 			enabled = true, -- Better notifications
 			timeout = 3000,

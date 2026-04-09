@@ -26,7 +26,6 @@ return {
         "gitsigns",
         "nvim-cmp",
         "nvim-tree",
-        "telescope",
       },
       disable = {
         colored_cursor = false,
