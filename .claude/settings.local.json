@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(printf 'gitdir: ../../../../../.git/modules/shellrc/.config/zsh/plugins/zsh-autosuggestions')",
+      "Bash(printf 'gitdir: ../../../../../.git/modules/shellrc/.config/zsh/plugins/zsh-syntax-highlighting')"
+    ]
+  }
+}

@@ -1,9 +1,14 @@
-# Personal aliases
-
 # Directory navigation
 alias cln="cd ~/clones"
 alias dl="cd ~/Downloads"
 alias dt="cd ~/Desktop"
+
+# Misc shortcuts
+alias c="clear"
+alias e="exit"
+alias t="tmux"
+alias ta="tmux attach || tmux"
+alias mp="multipass"
 
 # Package managers
 alias p="pnpm"
@@ -18,26 +23,31 @@ alias dset="doppler secrets set"
 alias denv="doppler secrets download --no-file --format=env-no-quotes"
 alias dcp="denv | pbcopy"
 
-# Misc shortcuts
-alias mp="multipass"
-alias c="clear"
-alias e="exit"
-alias t="tmux"
-alias ta="tmux attach || tmux"
+# ls - use eza if available, fallback to plain ls
+if command -v eza >/dev/null 2>&1; then
+    alias l="eza -l --group-directories-first --icons --color=always"
+    alias ls="eza --group-directories-first --icons --color=always"
+    alias ll="eza -l --group-directories-first --icons --color=always"
+    alias la="eza -la --group-directories-first --icons --color=always"
+    alias laa="eza -la --group-directories-first --icons --color=always --absolute"
+    alias lag="eza -la --group-directories-first --icons --color=always --git --git-repos-no-status"
+else
+    alias l="ls -l"
+    alias ll="ls -l"
+    alias la="ls -la"
+fi
 
-# Modern replacements
-alias cat="bat"
-alias l="eza -l --group-directories-first --icons --color=always"
-alias ls="eza --group-directories-first --icons --color=always"
-alias ll="eza -l --group-directories-first --icons --color=always"
-alias la="eza -la --group-directories-first --icons --color=always"
-alias laa="eza -la --group-directories-first --icons --color=always --absolute"
-alias lag="eza -la --group-directories-first --icons --color=always --git --git-repos-no-status"
+# cat - use bat if available
+if command -v bat >/dev/null 2>&1; then
+    alias cat="bat"
+fi
 
-# fzf + nvim integration
-alias inv='nvim $(fzf -m --preview="bat --color=always {}")'
+# fzf + nvim integration (requires both fzf and nvim)
+if command -v fzf >/dev/null 2>&1 && command -v nvim >/dev/null 2>&1; then
+    alias inv='nvim $(fzf -m --preview="bat --color=always {}")'
+fi
 
-# Git aliases (from oh-my-zsh git plugin)
+# Git aliases
 alias g='git'
 alias ga='git add'
 alias gaa='git add --all'
@@ -193,7 +203,6 @@ alias gsw='git switch'
 alias gswc='git switch -c'
 alias gswd='git switch $(git_develop_branch)'
 alias gswm='git switch $(git_main_branch)'
-alias gtl='gtl(){ git tag --sort=-v:refname -n -l "${1}*" }; noglob gtl'
 alias gts='git tag -s'
 alias gtv='git tag | sort -V'
 alias gunignore='git update-index --no-assume-unchanged'
@@ -203,17 +212,4 @@ alias gupa='git pull --rebase --autostash'
 alias gupav='git pull --rebase --autostash -v'
 alias gupv='git pull --rebase -v'
 alias gwch='git whatchanged -p --abbrev-commit --pretty=medium'
-alias gwip='git add -A; git rm $(git ls-files --deleted) 2> /dev/null; git commit --no-verify --no-gpg-sign -m "--wip-- [skip ci]"'
-
-# Git helper functions for aliases
-git_current_branch() {
-    git symbolic-ref --quiet --short HEAD 2> /dev/null || git rev-parse --short HEAD 2> /dev/null
-}
-
-git_main_branch() {
-    git symbolic-ref refs/remotes/origin/HEAD 2> /dev/null | sed 's@^refs/remotes/origin/@@' || echo main
-}
-
-git_develop_branch() {
-    git symbolic-ref refs/remotes/origin/HEAD 2> /dev/null | sed 's@^refs/remotes/origin/@@' || echo develop
-}
+alias gwip='git add -A; git rm $(git ls-files --deleted) 2>/dev/null; git commit --no-verify --no-gpg-sign -m "--wip-- [skip ci]"'

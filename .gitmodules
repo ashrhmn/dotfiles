@@ -17,11 +17,11 @@
 	path = tools/tgp-report
 	url = git@github.com:ashrhmn/tgp-report.git
 	branch = main
-[submodule "zshrc/.config/zsh/plugins/zsh-autosuggestions"]
-	path = zshrc/.config/zsh/plugins/zsh-autosuggestions
+[submodule "shellrc/.config/zsh/plugins/zsh-autosuggestions"]
+	path = shellrc/.config/zsh/plugins/zsh-autosuggestions
 	url = https://github.com/zsh-users/zsh-autosuggestions.git
 	branch = master
-[submodule "zshrc/.config/zsh/plugins/zsh-syntax-highlighting"]
-	path = zshrc/.config/zsh/plugins/zsh-syntax-highlighting
+[submodule "shellrc/.config/zsh/plugins/zsh-syntax-highlighting"]
+	path = shellrc/.config/zsh/plugins/zsh-syntax-highlighting
 	url = https://github.com/zsh-users/zsh-syntax-highlighting.git
 	branch = master
