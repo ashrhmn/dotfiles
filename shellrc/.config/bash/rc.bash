@@ -15,7 +15,7 @@ SHELL_DIR="$HOME/.config/shell"
 source "$SHELL_DIR/functions.sh"
 source "$SHELL_DIR/environment.sh"
 source "$SHELL_DIR/paths.sh"
-source "$SHELL_DIR/aliases.sh"
+source "$SHELL_DIR/aliases/index.sh"
 
 # Bash-specific: gtl as a plain function (no noglob)
 gtl() { git tag --sort=-v:refname -n -l "${1}*"; }

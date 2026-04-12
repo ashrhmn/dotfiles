@@ -1,0 +1,5 @@
+alias dopen="doppler open"
+alias dget="doppler secrets get"
+alias dset="doppler secrets set"
+alias denv="doppler secrets download --no-file --format=env-no-quotes"
+alias dcp="denv | pbcopy"

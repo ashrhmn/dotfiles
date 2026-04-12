@@ -44,7 +44,7 @@ debug_log "Loading paths"
 source "$HOME/.config/shell/paths.sh"
 
 debug_log "Loading aliases"
-source "$HOME/.config/shell/aliases.sh"
+source "$HOME/.config/shell/aliases/index.sh"
 
 # Zsh-specific: gtl uses noglob builtin
 alias gtl='gtl(){ git tag --sort=-v:refname -n -l "${1}*" }; noglob gtl'
