@@ -1,0 +1,9 @@
+# VCS internals
+.git
+.jj
+
+# Local env tooling
+.direnv
+
+# Generated query metadata
+.sqlx

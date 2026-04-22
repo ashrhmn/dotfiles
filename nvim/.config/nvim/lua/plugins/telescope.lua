@@ -66,9 +66,7 @@ return {
 				pickers = {
 					find_files = {
 						find_command = {
-							"sh",
-							"-c",
-							"{ rg --files --hidden --glob=!.git/ 2>/dev/null; rg --files --hidden --no-ignore-vcs --glob='*.env*' --glob=!.git/ 2>/dev/null; } | sort -u",
+							"find-files",
 						},
 					},
 				},

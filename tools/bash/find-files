@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+xdg_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+cfg="$xdg_config_home/find-files/ignore-globs"
+exclude_args=()
+
+if [ -f "$cfg" ]; then
+  while IFS= read -r pat || [ -n "$pat" ]; do
+    [ -z "$pat" ] && continue
+    case "$pat" in
+      \#*) continue ;;
+    esac
+    exclude_args+=(--glob "!$pat")
+    exclude_args+=(--glob "!**/$pat")
+  done < "$cfg"
+fi
+
+base_args=(
+  --files
+  --hidden
+)
+
+{
+  rg "${base_args[@]}" "${exclude_args[@]}" "$@" 2>/dev/null
+  rg "${base_args[@]}" --no-ignore --glob '*.env*' "${exclude_args[@]}" "$@" 2>/dev/null
+} | awk '!seen[$0]++'
