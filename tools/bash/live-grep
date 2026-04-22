@@ -40,8 +40,8 @@ base_args=(
 )
 
 {
-  rg "${base_args[@]}" "${exclude_args[@]}" "$@" 2>/dev/null
+  rg "${base_args[@]}" "${exclude_args[@]}" "$@" 2>/dev/null || true
   if [ "${#include_args[@]}" -gt 0 ]; then
-    rg "${base_args[@]}" --no-ignore "${include_args[@]}" "${exclude_args[@]}" "$@" 2>/dev/null
+    rg "${base_args[@]}" --no-ignore "${include_args[@]}" "${exclude_args[@]}" "$@" 2>/dev/null || true
   fi
 } | awk '!seen[$0]++'
