@@ -4,6 +4,8 @@ set -euo pipefail
 xdg_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 cfg="$xdg_config_home/find-files/ignore-globs"
 exclude_args=()
+search_roots=()
+name_filters=()
 
 if [ -f "$cfg" ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
@@ -16,12 +18,38 @@ if [ -f "$cfg" ]; then
   done < "$cfg"
 fi
 
+for arg in "$@"; do
+  if [ -e "$arg" ]; then
+    search_roots+=("$arg")
+  else
+    name_filters+=("$arg")
+  fi
+done
+
 base_args=(
   --files
   --hidden
 )
 
 {
-  rg "${base_args[@]}" "${exclude_args[@]}" "$@" 2>/dev/null
-  rg "${base_args[@]}" --no-ignore --glob '*.env*' "${exclude_args[@]}" "$@" 2>/dev/null
-} | awk '!seen[$0]++'
+  rg "${base_args[@]}" "${exclude_args[@]}" "${search_roots[@]}" 2>/dev/null
+  rg "${base_args[@]}" --no-ignore --glob '*.env*' "${exclude_args[@]}" "${search_roots[@]}" 2>/dev/null
+} | awk '
+  BEGIN {
+    for (i = 1; i < ARGC; i++) {
+      filters[i] = tolower(ARGV[i])
+    }
+    ARGC = 1
+  }
+  {
+    path = tolower($0)
+    for (i in filters) {
+      if (index(path, filters[i]) == 0) {
+        next
+      }
+    }
+    if (!seen[$0]++) {
+      print
+    }
+  }
+' "${name_filters[@]}"
