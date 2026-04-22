@@ -1,0 +1,392 @@
+#!/bin/bash
+
+set -euo pipefail
+
+VERSION="1.0.0"
+
+usage() {
+    cat << EOF
+Usage: pgb [OPTIONS] <backup|b|restore|r> [archive.tar]
+
+PostgreSQL backup and restore helper.
+
+Commands:
+    b, backup              Create a backup tar archive for the current database
+    r, restore             Restore the current database from a backup tar archive
+
+Options:
+    -e, --env-file <file>  Specify custom .env file (default: .env if it exists)
+    -d, --debug            Show debug output for connection variables
+    -h, --help             Show this help message
+    -v, --version          Show version information
+
+Behavior:
+    pgb backup             Creates <db_name>.tar in the current directory
+    pgb backup path.tar    Creates the backup at the provided .tar path
+    pgb restore            Restores from <db_name>.tar in the current directory
+    pgb restore path.tar   Restores from the provided .tar path
+
+Notes:
+    - Archive paths must end with .tar
+    - Backups include schema, tables, views, functions, and data
+    - Backups exclude ownership and privilege metadata
+    - Restore requires the target database to already exist
+
+Environment Variables (in priority order):
+    URL:      DATABASE_URL, DB_URL, POSTGRES_URL, POSTGRESQL_URL, PG_URL
+    Host:     DATABASE_HOST, DB_HOST, POSTGRES_HOST, PG_HOST, PGHOST
+    Port:     DATABASE_PORT, DB_PORT, POSTGRES_PORT, PG_PORT, PGPORT
+    User:     DATABASE_USERNAME, DATABASE_USER, DB_USER, DB_USERNAME, POSTGRES_USER, PG_USER, PGUSER
+    Password: DATABASE_PASSWORD, DB_PASSWORD, POSTGRES_PASSWORD, PG_PASSWORD, PGPASSWORD
+    Database: DATABASE_NAME, DATABASE_DB, DB_DATABASE, DB_NAME, POSTGRES_DB, PG_DATABASE, PGDATABASE
+
+Defaults:
+    Host: localhost
+    Port: 5432
+    User: postgres
+    Password: password
+    Database: postgres
+EOF
+}
+
+mask_password() {
+    local password="$1"
+
+    if [[ -z "$password" ]]; then
+        echo "(empty)"
+    else
+        echo "****"
+    fi
+}
+
+load_env_file() {
+    local env_file="$1"
+    local explicit="$2"
+
+    if [[ ! -f "$env_file" ]]; then
+        if [[ "$explicit" == "true" ]]; then
+            echo "Error: Environment file '$env_file' not found" >&2
+            exit 1
+        fi
+        return 0
+    fi
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+
+        if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+            local key="${BASH_REMATCH[1]}"
+            local value="${BASH_REMATCH[2]}"
+
+            value="${value#\"}"
+            value="${value%\"}"
+            value="${value#\'}"
+            value="${value%\'}"
+
+            export "$key=$value"
+        fi
+    done < "$env_file"
+}
+
+get_variable_by_priority() {
+    local var_name="$1"
+    local debug="$2"
+    shift 2
+    local priority_list=("$@")
+
+    for var in "${priority_list[@]}"; do
+        if [[ -n "${!var:-}" ]]; then
+            if [[ "$debug" == "true" ]]; then
+                if [[ "$var_name" == "password" ]]; then
+                    echo "Using $var: $(mask_password "${!var}")" >&2
+                else
+                    echo "Using $var: ${!var}" >&2
+                fi
+            fi
+            echo "${!var}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+setup_pg_connection_vars() {
+    local debug="$1"
+
+    PG_URL=""
+
+    if [[ "$debug" == "true" ]]; then
+        echo "Loading PostgreSQL connection variables:" >&2
+    fi
+
+    local url_vars=(DATABASE_URL DB_URL POSTGRES_URL POSTGRESQL_URL PG_URL)
+    if PG_URL=$(get_variable_by_priority "url" "$debug" "${url_vars[@]}"); then
+        export PG_URL
+        if [[ "$debug" == "true" ]]; then
+            echo "Using PostgreSQL URL (ignoring individual variables)" >&2
+            echo >&2
+        fi
+        return 0
+    fi
+
+    local host_vars=(DATABASE_HOST DB_HOST POSTGRES_HOST PG_HOST PGHOST)
+    local port_vars=(DATABASE_PORT DB_PORT POSTGRES_PORT PG_PORT PGPORT)
+    local user_vars=(DATABASE_USERNAME DATABASE_USER DB_USER DB_USERNAME POSTGRES_USER PG_USER PGUSER)
+    local password_vars=(DATABASE_PASSWORD DB_PASSWORD POSTGRES_PASSWORD PG_PASSWORD PGPASSWORD)
+    local db_vars=(DATABASE_NAME DATABASE_DB DB_DATABASE DB_NAME POSTGRES_DB PG_DATABASE PGDATABASE)
+
+    export PGHOST="$(get_variable_by_priority "host" "$debug" "${host_vars[@]}" || echo "localhost")"
+    export PGPORT="$(get_variable_by_priority "port" "$debug" "${port_vars[@]}" || echo "5432")"
+    export PGUSER="$(get_variable_by_priority "user" "$debug" "${user_vars[@]}" || echo "postgres")"
+    export PGPASSWORD="$(get_variable_by_priority "password" "$debug" "${password_vars[@]}" || echo "password")"
+    export PGDATABASE="$(get_variable_by_priority "database" "$debug" "${db_vars[@]}" || echo "postgres")"
+
+    if [[ "$debug" == "true" ]]; then
+        echo "Using default/final host: $PGHOST" >&2
+        echo "Using default/final port: $PGPORT" >&2
+        echo "Using default/final user: $PGUSER" >&2
+        echo "Using default/final password: $(mask_password "$PGPASSWORD")" >&2
+        echo "Using default/final database: $PGDATABASE" >&2
+        echo >&2
+    fi
+}
+
+run_psql() {
+    if [[ -n "${PG_URL:-}" ]]; then
+        PGPASSWORD="${PGPASSWORD:-}" psql "$PG_URL" "$@"
+    else
+        PGPASSWORD="${PGPASSWORD:-}" psql "$@"
+    fi
+}
+
+run_pg_dump() {
+    if [[ -n "${PG_URL:-}" ]]; then
+        PGPASSWORD="${PGPASSWORD:-}" pg_dump "$PG_URL" "$@"
+    else
+        PGPASSWORD="${PGPASSWORD:-}" pg_dump "$@"
+    fi
+}
+
+resolve_database_name() {
+    if [[ -n "${PG_URL:-}" ]]; then
+        run_psql -Atqc "SELECT current_database()"
+    else
+        echo "${PGDATABASE}"
+    fi
+}
+
+ensure_tar_extension() {
+    local archive_path="$1"
+
+    if [[ "$archive_path" != *.tar ]]; then
+        echo "Error: Archive path must end with .tar: $archive_path" >&2
+        exit 1
+    fi
+}
+
+resolve_output_archive_path() {
+    local archive_path="$1"
+
+    ensure_tar_extension "$archive_path"
+
+    local parent_dir
+    parent_dir="$(dirname "$archive_path")"
+
+    if [[ ! -d "$parent_dir" ]]; then
+        echo "Error: Parent directory does not exist: $parent_dir" >&2
+        exit 1
+    fi
+
+    parent_dir="$(realpath "$parent_dir")"
+    echo "$parent_dir/$(basename "$archive_path")"
+}
+
+resolve_input_archive_path() {
+    local archive_path="$1"
+
+    ensure_tar_extension "$archive_path"
+
+    if [[ ! -f "$archive_path" ]]; then
+        echo "Error: Archive not found: $archive_path" >&2
+        exit 1
+    fi
+
+    realpath "$archive_path"
+}
+
+ensure_database_exists() {
+    if ! run_psql -Atqc "SELECT 1" >/dev/null; then
+        local db_name="$1"
+        echo "Error: Database '$db_name' does not exist or is not reachable" >&2
+        exit 1
+    fi
+}
+
+backup_database() {
+    local db_name="$1"
+    local archive_path="$2"
+    local temp_dir
+    temp_dir="$(mktemp -d)"
+    local dump_name="${db_name}.dump"
+    local dump_path="$temp_dir/$dump_name"
+    local manifest_path="$temp_dir/manifest.txt"
+
+    trap 'rm -rf "'"$temp_dir"'"' RETURN
+
+    echo "database=$db_name" > "$manifest_path"
+    echo "created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$manifest_path"
+
+    echo "Creating backup for database '$db_name'..."
+    run_pg_dump \
+        --format=custom \
+        --compress=9 \
+        --no-owner \
+        --no-privileges \
+        --file "$dump_path"
+
+    tar -cf "$archive_path" -C "$temp_dir" "$dump_name" "manifest.txt"
+    trap - RETURN
+    rm -rf "$temp_dir"
+    echo "Backup written to $archive_path"
+}
+
+restore_database() {
+    local db_name="$1"
+    local archive_path="$2"
+    local temp_dir
+    temp_dir="$(mktemp -d)"
+
+    trap 'rm -rf "'"$temp_dir"'"' RETURN
+
+    echo "Extracting backup archive '$archive_path'..."
+    tar -xf "$archive_path" -C "$temp_dir"
+
+    mapfile -t dump_files < <(find "$temp_dir" -maxdepth 1 -type f -name '*.dump' | sort)
+
+    if [[ "${#dump_files[@]}" -eq 0 ]]; then
+        echo "Error: No dump file found in archive" >&2
+        exit 1
+    fi
+
+    if [[ "${#dump_files[@]}" -gt 1 ]]; then
+        echo "Error: Multiple dump files found in archive" >&2
+        exit 1
+    fi
+
+    ensure_database_exists "$db_name"
+
+    echo "Restoring database '$db_name'..."
+    if [[ -n "${PG_URL:-}" ]]; then
+        PGPASSWORD="${PGPASSWORD:-}" pg_restore \
+            --dbname="$PG_URL" \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            --exit-on-error \
+            "${dump_files[0]}"
+    else
+        PGPASSWORD="${PGPASSWORD:-}" pg_restore \
+            --dbname="$PGDATABASE" \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            --exit-on-error \
+            "${dump_files[0]}"
+    fi
+
+    trap - RETURN
+    rm -rf "$temp_dir"
+    echo "Restore completed from $archive_path"
+}
+
+main() {
+    local env_file=".env"
+    local env_file_explicit="false"
+    local debug="false"
+    local command=""
+    local archive_arg=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -e|--env-file)
+                if [[ $# -lt 2 ]]; then
+                    echo "Error: --env-file requires a path" >&2
+                    exit 1
+                fi
+                env_file="$2"
+                env_file_explicit="true"
+                shift 2
+                ;;
+            -d|--debug)
+                debug="true"
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -v|--version)
+                echo "pgb version $VERSION"
+                exit 0
+                ;;
+            b|backup|r|restore)
+                command="$1"
+                shift
+                if [[ $# -gt 0 ]]; then
+                    archive_arg="$1"
+                    shift
+                fi
+                if [[ $# -gt 0 ]]; then
+                    echo "Error: Unexpected arguments: $*" >&2
+                    exit 1
+                fi
+                break
+                ;;
+            *)
+                echo "Error: Unknown argument: $1" >&2
+                usage
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$command" ]]; then
+        usage
+        exit 1
+    fi
+
+    load_env_file "$env_file" "$env_file_explicit"
+    setup_pg_connection_vars "$debug"
+
+    local db_name
+    db_name="$(resolve_database_name)"
+    if [[ -z "$db_name" ]]; then
+        echo "Error: Could not determine database name" >&2
+        exit 1
+    fi
+
+    local archive_path=""
+    case "$command" in
+        b|backup)
+            if [[ -n "$archive_arg" ]]; then
+                archive_path="$(resolve_output_archive_path "$archive_arg")"
+            else
+                archive_path="$(resolve_output_archive_path "./${db_name}.tar")"
+            fi
+            backup_database "$db_name" "$archive_path"
+            ;;
+        r|restore)
+            if [[ -n "$archive_arg" ]]; then
+                archive_path="$(resolve_input_archive_path "$archive_arg")"
+            else
+                archive_path="$(resolve_input_archive_path "./${db_name}.tar")"
+            fi
+            restore_database "$db_name" "$archive_path"
+            ;;
+    esac
+}
+
+main "$@"
