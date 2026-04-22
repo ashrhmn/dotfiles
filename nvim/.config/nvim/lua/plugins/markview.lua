@@ -13,10 +13,10 @@ return {
 
     -- Setup markview with configuration
     require("markview").setup({
-      experimental = {
-        check_rtp = false,
-        check_rtp_message = false,
-      },
+      -- experimental = {
+      --   check_rtp = false,
+      --   check_rtp_message = false,
+      -- },
       preview = {
         enable = true,
         filetypes = { "md", "rmd", "quarto", "markdown" },
@@ -24,24 +24,24 @@ return {
         -- hybrid_modes = { "n" },
         debounce = 50,
       },
-      markdown = {
-        headings = presets.headings.slanted,
-        horizontal_rules = presets.horizontal_rules.thin,
-        tables = presets.tables.rounded,
-      },
+      -- markdown = {
+      --   headings = presets.headings.slanted,
+      --   horizontal_rules = presets.horizontal_rules.thin,
+      --   tables = presets.tables.rounded,
+      -- },
     })
 
     -- Setup extras
-    require("markview.extras.checkboxes").setup()
-    require("markview.extras.headings").setup()
-    require("markview.extras.editor").setup()
+    -- require("markview.extras.checkboxes").setup()
+    -- require("markview.extras.headings").setup()
+    -- require("markview.extras.editor").setup()
 
     -- Additional keybindings for extras
-    vim.keymap.set(
-      { "n", "v" },
-      "<leader>mc",
-      "<cmd>Checkbox toggle<cr>",
-      { noremap = true, silent = true, desc = "Toggle checkbox state" }
-    )
+    -- vim.keymap.set(
+    --   { "n", "v" },
+    --   "<leader>mc",
+    --   "<cmd>Checkbox toggle<cr>",
+    --   { noremap = true, silent = true, desc = "Toggle checkbox state" }
+    -- )
   end,
 }
