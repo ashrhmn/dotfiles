@@ -13,8 +13,7 @@ if [ -f "$cfg" ]; then
     case "$pat" in
       \#*) continue ;;
     esac
-    exclude_args+=(--glob "!$pat")
-    exclude_args+=(--glob "!**/$pat")
+    exclude_args+=(--exclude "$pat")
   done < "$cfg"
 fi
 
@@ -26,14 +25,19 @@ for arg in "$@"; do
   fi
 done
 
+if [ "${#search_roots[@]}" -eq 0 ]; then
+  search_roots=(.)
+fi
+
 base_args=(
-  --files
+  --type
+  f
   --hidden
 )
 
 {
-  rg "${base_args[@]}" "${exclude_args[@]}" "${search_roots[@]}" 2>/dev/null
-  rg "${base_args[@]}" --no-ignore --glob '*.env*' "${exclude_args[@]}" "${search_roots[@]}" 2>/dev/null
+  fd . "${search_roots[@]}" "${base_args[@]}" "${exclude_args[@]}" 2>/dev/null
+  fd --glob '*.env*' "${search_roots[@]}" "${base_args[@]}" --no-ignore "${exclude_args[@]}" 2>/dev/null
 } | awk '
   BEGIN {
     for (i = 1; i < ARGC; i++) {
@@ -48,8 +52,10 @@ base_args=(
         next
       }
     }
-    if (!seen[$0]++) {
-      print
+    output = $0
+    sub(/^\.\/+/, "", output)
+    if (!seen[output]++) {
+      print output
     }
   }
 ' "${name_filters[@]}"
