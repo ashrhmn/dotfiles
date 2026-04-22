@@ -2,19 +2,31 @@
 set -euo pipefail
 
 xdg_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
-cfg="$xdg_config_home/find-files/ignore-globs"
+exclude_cfg="$xdg_config_home/find-files/exclude-globs"
+include_cfg="$xdg_config_home/find-files/include-globs"
 exclude_args=()
+include_patterns=()
 search_roots=()
 name_filters=()
 
-if [ -f "$cfg" ]; then
+if [ -f "$exclude_cfg" ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
     [ -z "$pat" ] && continue
     case "$pat" in
       \#*) continue ;;
     esac
     exclude_args+=(--exclude "$pat")
-  done < "$cfg"
+  done < "$exclude_cfg"
+fi
+
+if [ -f "$include_cfg" ]; then
+  while IFS= read -r pat || [ -n "$pat" ]; do
+    [ -z "$pat" ] && continue
+    case "$pat" in
+      \#*) continue ;;
+    esac
+    include_patterns+=("$pat")
+  done < "$include_cfg"
 fi
 
 for arg in "$@"; do
@@ -37,7 +49,10 @@ base_args=(
 
 {
   fd . "${search_roots[@]}" "${base_args[@]}" "${exclude_args[@]}" 2>/dev/null
-  fd --glob '*.env*' "${search_roots[@]}" "${base_args[@]}" --no-ignore "${exclude_args[@]}" 2>/dev/null
+  for pat in "${include_patterns[@]}"; do
+    fd "${base_args[@]}" --no-ignore --glob "${exclude_args[@]}" "$pat" "${search_roots[@]}" 2>/dev/null
+    fd "${base_args[@]}" --no-ignore --glob --full-path "${exclude_args[@]}" "**/$pat" "${search_roots[@]}" 2>/dev/null
+  done
 } | awk '
   BEGIN {
     for (i = 1; i < ARGC; i++) {
