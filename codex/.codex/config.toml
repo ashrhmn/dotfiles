@@ -77,6 +77,8 @@ model_reasoning_effort = "medium"
 personality = "pragmatic"
 
 # Extra settings when sandbox_mode = "workspace-write".
+notify = ["/Users/ash/.codex/plugins/cache/openai-bundled/computer-use/1.0.755/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient", "turn-ended"]
+
 [sandbox_workspace_write]
 # Exclude $TMPDIR from writable roots (default: false)
 exclude_tmpdir_env_var = false
@@ -217,11 +219,24 @@ trust_level = "trusted"
 [projects."/home/ash"]
 trust_level = "trusted"
 
+[projects."/Users/ash/clones/ashrhmn/ledgeo_app"]
+trust_level = "trusted"
+
+[projects."/Users/ash/dotfiles"]
+trust_level = "trusted"
+
 [plugins."github@openai-curated"]
 enabled = true
 
 [plugins."google-drive@openai-curated"]
 enabled = true
 
-# Reserved for future TUI-specific options.
+[plugins."computer-use@openai-bundled"]
+enabled = true
 
+[marketplaces.openai-bundled]
+last_updated = "2026-04-22T08:22:31Z"
+source_type = "local"
+source = "/Users/ash/.codex/.tmp/bundled-marketplaces/openai-bundled"
+
+# Reserved for future TUI-specific options.
