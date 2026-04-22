@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cfg="${XDG_CONFIG_HOME:-$HOME/.config}/telescope/ignore-globs"
+xdg_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+cfg="$xdg_config_home/live-grep/ignore-globs"
 exclude_args=()
 
 if [ -f "$cfg" ]; then
@@ -11,6 +12,7 @@ if [ -f "$cfg" ]; then
       \#*) continue ;;
     esac
     exclude_args+=(--glob "!$pat")
+    exclude_args+=(--glob "!**/$pat")
   done < "$cfg"
 fi
 
