@@ -24,24 +24,7 @@ return {
 			telescope.setup({
 				defaults = {
 					vimgrep_arguments = {
-						"rg",
-						"--color=never",
-						"--no-heading",
-						"--with-filename",
-						"--line-number",
-						"--column",
-						"--smart-case",
-						"--hidden",
-						"--no-ignore-vcs",
-						"--glob=!.git/",
-						"--glob=!.ccd/",
-						"--glob=!node_modules/",
-						"--glob=!tmp/",
-						"--glob=!build/",
-						"--glob=!dist/",
-						"--glob=!out/",
-						"--glob=!.next/",
-						"--glob=!.DS_Store",
+						"live-grep"
 					},
 					layout_strategy = "horizontal",
 					layout_config = {
