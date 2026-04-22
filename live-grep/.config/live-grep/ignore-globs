@@ -11,4 +11,4 @@ poetry.lock
 Pipfile.lock
 uv.lock
 .git
-.sqlx/**
+.sqlx
