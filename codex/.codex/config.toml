@@ -225,6 +225,12 @@ trust_level = "trusted"
 [projects."/Users/ash/dotfiles"]
 trust_level = "trusted"
 
+[projects."/home/ash/clones/DeepchainLabs/kazentic-backend"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/Krown-Network/qastle-ui"]
+trust_level = "trusted"
+
 [plugins."github@openai-curated"]
 enabled = true
 

@@ -1,25 +1,44 @@
 return {
   "neovim/nvim-lspconfig",
-  opts = {
-    inlay_hints = { enabled = true },
-  },
   event = { "BufReadPre", "BufNewFile" },
   dependencies = {
     "hrsh7th/cmp-nvim-lsp",
     { "antosha417/nvim-lsp-file-operations", config = true },
-    { "folke/lazydev.nvim", ft = "lua", opts = {} }, -- Replaced neodev with lazydev
+    { "folke/lazydev.nvim", ft = "lua", opts = {} },
     "b0o/schemastore.nvim",
-    "williamboman/mason-lspconfig.nvim",
+    "mason-org/mason-lspconfig.nvim",
   },
   config = function()
     local cmp_nvim_lsp = require("cmp_nvim_lsp")
     local keymap = vim.keymap
+    local capabilities = vim.tbl_deep_extend(
+      "force",
+      vim.lsp.protocol.make_client_capabilities(),
+      cmp_nvim_lsp.default_capabilities()
+    )
 
-    -- LSP Keybindings on attach
+    local function organize_ts_imports()
+      vim.lsp.buf.execute_command({
+        command = "_typescript.organizeImports",
+        arguments = { vim.api.nvim_buf_get_name(0) },
+        title = "Organize Imports",
+      })
+    end
+
+    local function organize_go_imports()
+      vim.lsp.buf.code_action({
+        context = { only = { "source.organizeImports" } },
+        apply = true,
+      })
+      vim.lsp.buf.code_action({
+        context = { only = { "source.fixAll" } },
+        apply = true,
+      })
+    end
+
     vim.api.nvim_create_autocmd("LspAttach", {
       group = vim.api.nvim_create_augroup("UserLspConfig", {}),
       callback = function(ev)
-        -- Navigation
         keymap.set("n", "gR", "<cmd>Telescope lsp_references<CR>", { buffer = ev.buf, desc = "Show LSP references" })
         keymap.set("n", "gD", vim.lsp.buf.declaration, { buffer = ev.buf, desc = "Go to declaration" })
         keymap.set("n", "gd", "<cmd>Telescope lsp_definitions<CR>", { buffer = ev.buf, desc = "Show LSP definitions" })
@@ -35,8 +54,6 @@ return {
           "<cmd>Telescope lsp_type_definitions<CR>",
           { buffer = ev.buf, desc = "Show LSP type definitions" }
         )
-
-        -- Actions
         keymap.set(
           { "n", "v" },
           "<leader>ca",
@@ -44,8 +61,6 @@ return {
           { buffer = ev.buf, desc = "See available code actions" }
         )
         keymap.set("n", "<leader>rn", vim.lsp.buf.rename, { buffer = ev.buf, desc = "Smart rename" })
-
-        -- Diagnostics
         keymap.set(
           "n",
           "<leader>D",
@@ -55,26 +70,132 @@ return {
         keymap.set("n", "<leader>d", vim.diagnostic.open_float, { buffer = ev.buf, desc = "Show line diagnostics" })
         keymap.set("n", "[d", vim.diagnostic.goto_prev, { buffer = ev.buf, desc = "Go to previous diagnostic" })
         keymap.set("n", "]d", vim.diagnostic.goto_next, { buffer = ev.buf, desc = "Go to next diagnostic" })
-
-        -- Documentation
         keymap.set("n", "K", vim.lsp.buf.hover, { buffer = ev.buf, desc = "Show hover documentation" })
-
-        -- Restart LSP
-        keymap.set("n", "<leader>rs", ":LspRestart<CR>", { buffer = ev.buf, desc = "Restart LSP" })
+        keymap.set("n", "<leader>rs", "<cmd>lsp restart<CR>", { buffer = ev.buf, desc = "Restart LSP" })
       end,
     })
 
-    -- Capabilities for autocompletion
-    local capabilities = vim.lsp.protocol.make_client_capabilities()
-    capabilities = vim.tbl_deep_extend("force", capabilities, cmp_nvim_lsp.default_capabilities())
-
-    -- Diagnostic symbols in the sign column with high priority
     local signs = { Error = " ", Warn = " ", Hint = "󰠠 ", Info = " " }
     for type, icon in pairs(signs) do
       local hl = "DiagnosticSign" .. type
       vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = "", priority = 10 })
     end
 
-    -- Note: LSP server configurations are handled in mason.lua
+    vim.lsp.config("*", {
+      capabilities = capabilities,
+    })
+
+    vim.lsp.config("ts_ls", {
+      init_options = {
+        hostInfo = "neovim",
+        preferences = {
+          importModuleSpecifierPreference = "non-relative",
+          includeInlayParameterNameHints = "all",
+          includeInlayParameterNameHintsWhenArgumentMatchesName = false,
+          includeInlayFunctionParameterTypeHints = false,
+          includeInlayVariableTypeHints = false,
+          includeInlayVariableTypeHintsWhenTypeMatchesName = false,
+          includeInlayPropertyDeclarationTypeHints = false,
+          includeInlayFunctionLikeReturnTypeHints = false,
+          includeInlayEnumMemberValueHints = false,
+        },
+      },
+      commands = {
+        OrganizeImports = {
+          organize_ts_imports,
+          description = "Organize Imports",
+        },
+      },
+    })
+
+    vim.lsp.config("gopls", {
+      commands = {
+        OrganizeImports = {
+          organize_go_imports,
+          description = "Organize Imports",
+        },
+      },
+    })
+
+    vim.lsp.config("emmet_ls", {
+      filetypes = {
+        "html",
+        "typescriptreact",
+        "javascriptreact",
+        "css",
+        "sass",
+        "scss",
+        "less",
+        "svelte",
+      },
+    })
+
+    vim.lsp.config("lua_ls", {
+      settings = {
+        Lua = {
+          diagnostics = {
+            globals = { "vim" },
+          },
+          completion = {
+            callSnippet = "Replace",
+          },
+          workspace = {
+            library = {
+              [vim.fn.expand("$VIMRUNTIME/lua")] = true,
+              [vim.fn.stdpath("config") .. "/lua"] = true,
+            },
+          },
+        },
+      },
+    })
+
+    vim.lsp.config("yamlls", {
+      settings = {
+        yaml = {
+          schemaStore = {
+            enable = false,
+            url = "",
+          },
+          schemas = require("schemastore").yaml.schemas(),
+        },
+      },
+    })
+
+    vim.lsp.config("jsonls", {
+      settings = {
+        json = {
+          schemas = require("schemastore").json.schemas(),
+          validate = { enable = true },
+        },
+      },
+    })
+
+    vim.lsp.config("tailwindcss", {
+      filetypes = { "templ", "astro", "javascript", "typescript", "react", "svelte", "vue", "html" },
+      settings = {
+        tailwindCSS = {
+          includeLanguages = {
+            templ = "html",
+          },
+        },
+      },
+    })
+
+    vim.lsp.enable({
+      "ts_ls",
+      "html",
+      "cssls",
+      "tailwindcss",
+      "lua_ls",
+      "emmet_ls",
+      "prismals",
+      "pyright",
+      "jsonls",
+      "yamlls",
+      "solidity_ls_nomicfoundation",
+      "gopls",
+      "templ",
+      "rust_analyzer",
+    })
   end,
 }
