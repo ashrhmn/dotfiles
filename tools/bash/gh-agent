@@ -848,14 +848,27 @@ fetch_claude_usage_state() {
 
     usage_json=$(fetch_claude_usage_json) || return 1
 
-    five_hour_reset=$(printf '%s' "$usage_json" | jq -r '.five_hour.resets_at // empty' 2>/dev/null)
-    seven_day_reset=$(printf '%s' "$usage_json" | jq -r '.seven_day.resets_at // empty' 2>/dev/null)
-    five_hour_used=$(printf '%s' "$usage_json" | jq -r '.five_hour.utilization // empty' 2>/dev/null)
-    seven_day_used=$(printf '%s' "$usage_json" | jq -r '.seven_day.utilization // empty' 2>/dev/null)
+    for attempt in 1 2; do
+        current_reset_epoch=""
+        five_hour_reset=$(printf '%s' "$usage_json" | jq -r '.five_hour.resets_at // empty' 2>/dev/null)
+        seven_day_reset=$(printf '%s' "$usage_json" | jq -r '.seven_day.resets_at // empty' 2>/dev/null)
+        five_hour_used=$(printf '%s' "$usage_json" | jq -r '.five_hour.utilization // empty' 2>/dev/null)
+        seven_day_used=$(printf '%s' "$usage_json" | jq -r '.seven_day.utilization // empty' 2>/dev/null)
 
-    if [[ -n "$five_hour_reset" ]]; then
-        current_reset_epoch=$(iso_to_epoch "$five_hour_reset")
-    fi
+        if [[ -n "$five_hour_reset" ]]; then
+            current_reset_epoch=$(iso_to_epoch "$five_hour_reset")
+        fi
+
+        if [[ -n "$seven_day_reset" ]] && [[ -n "$five_hour_used" ]] && [[ -n "$seven_day_used" ]]; then
+            break
+        fi
+
+        if (( attempt == 1 )); then
+            echo "Claude usage response is missing seven_day data or five_hour utilization data; refreshing through Claude CLI and retrying." >&2
+            refresh_claude_oauth_token_via_cli || return 1
+            usage_json=$(fetch_claude_usage_json) || return 1
+        fi
+    done
 
     if [[ -z "$seven_day_reset" ]] || [[ -z "$five_hour_used" ]] || [[ -z "$seven_day_used" ]]; then
         echo "Claude usage response is missing seven_day data or five_hour utilization data" >&2
