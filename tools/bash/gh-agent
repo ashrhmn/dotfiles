@@ -683,6 +683,37 @@ format_percent() {
     fi
 }
 
+append_run_log() {
+    local log_file="$1"
+    local message="$2"
+
+    if [[ -z "$log_file" ]]; then
+        return 0
+    fi
+
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$message" >> "$log_file"
+}
+
+run_logged_command() {
+    local log_file="$1"
+    shift
+
+    local output status
+    append_run_log "$log_file" "CMD: $*"
+    if output=$("$@" 2>&1); then
+        status=0
+    else
+        status=$?
+    fi
+
+    if [[ -n "$output" ]]; then
+        printf '%s\n' "$output" >> "$log_file"
+    fi
+    append_run_log "$log_file" "EXIT: $status"
+
+    return "$status"
+}
+
 post_issue_comment() {
     local repo_full_name="$1"
     local issue_number="$2"
@@ -1700,18 +1731,20 @@ ensure_gh_agent_branch() {
     local repo_name="$4"
     local default_branch="$5"
     local dry_run="${6:-false}"
+    local run_log_file="$7"
 
     local gh_agent_worktree="$WORKTREE_DIR/$repo_owner/$repo_name/gh-agent"
 
     if [[ "$dry_run" == "true" ]]; then
         echo "Dry run: skipping gh-agent branch setup." >&2
+        append_run_log "$run_log_file" "Dry run: skipped gh-agent branch setup for $repo_full_name"
         echo "$gh_agent_worktree"
         return 0
     fi
 
     # Fetch from origin; does not modify the base dir working tree
-    git -C "$repo_dir" fetch origin >/dev/null 2>&1 || true
-    git -C "$repo_dir" worktree prune >/dev/null 2>&1 || true
+    run_logged_command "$run_log_file" git -C "$repo_dir" fetch origin || true
+    run_logged_command "$run_log_file" git -C "$repo_dir" worktree prune || true
 
     mkdir -p "$(dirname "$gh_agent_worktree")"
 
@@ -1723,23 +1756,27 @@ ensure_gh_agent_branch() {
         gh_agent_worktree="$existing_worktree"
     elif [[ "$existing_worktree" == "$gh_agent_worktree" ]]; then
         echo "Reusing existing gh-agent worktree: $gh_agent_worktree" >&2
+        append_run_log "$run_log_file" "Reusing existing gh-agent worktree: $gh_agent_worktree"
     elif git -C "$repo_dir" show-ref --verify --quiet "refs/heads/gh-agent"; then
         echo "Creating gh-agent worktree from existing local branch" >&2
-        if ! git -C "$repo_dir" worktree add "$gh_agent_worktree" "gh-agent" 2>/dev/null; then
+        append_run_log "$run_log_file" "Creating gh-agent worktree from existing local branch"
+        if ! run_logged_command "$run_log_file" git -C "$repo_dir" worktree add "$gh_agent_worktree" "gh-agent"; then
             echo "Failed to add gh-agent worktree from local branch" >&2
             return 1
         fi
         copy_env_files "$repo_dir" "$gh_agent_worktree"
     elif git -C "$repo_dir" ls-remote --exit-code --heads origin "gh-agent" >/dev/null 2>&1; then
         echo "Creating gh-agent worktree from remote branch" >&2
-        if ! git -C "$repo_dir" worktree add --track -b "gh-agent" "$gh_agent_worktree" "origin/gh-agent" 2>/dev/null; then
+        append_run_log "$run_log_file" "Creating gh-agent worktree from remote branch"
+        if ! run_logged_command "$run_log_file" git -C "$repo_dir" worktree add --track -b "gh-agent" "$gh_agent_worktree" "origin/gh-agent"; then
             echo "Failed to add gh-agent worktree from remote branch" >&2
             return 1
         fi
         copy_env_files "$repo_dir" "$gh_agent_worktree"
     else
         echo "Creating gh-agent branch from origin/$default_branch" >&2
-        if ! git -C "$repo_dir" worktree add -b "gh-agent" "$gh_agent_worktree" "origin/$default_branch" 2>/dev/null; then
+        append_run_log "$run_log_file" "Creating gh-agent branch from origin/$default_branch"
+        if ! run_logged_command "$run_log_file" git -C "$repo_dir" worktree add -b "gh-agent" "$gh_agent_worktree" "origin/$default_branch"; then
             echo "Failed to create gh-agent branch and worktree" >&2
             return 1
         fi
@@ -1749,7 +1786,8 @@ ensure_gh_agent_branch() {
     # Step 1: pull any remote gh-agent changes (another machine may have pushed to it)
     if git -C "$gh_agent_worktree" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
         echo "Pulling remote gh-agent changes..." >&2
-        if ! git -C "$gh_agent_worktree" pull --ff-only >/dev/null 2>&1; then
+        append_run_log "$run_log_file" "Pulling remote gh-agent changes"
+        if ! run_logged_command "$run_log_file" git -C "$gh_agent_worktree" pull --ff-only; then
             echo "Error: could not fast-forward gh-agent from remote, remote may have diverged" >&2
             return 1
         fi
@@ -1757,7 +1795,8 @@ ensure_gh_agent_branch() {
 
     # Step 2: push local gh-agent state to remote (publishes branch on first run, syncs otherwise)
     echo "Pushing gh-agent to origin..." >&2
-    if ! git -C "$gh_agent_worktree" push -u origin "gh-agent" >/dev/null 2>&1; then
+    append_run_log "$run_log_file" "Pushing gh-agent to origin"
+    if ! run_logged_command "$run_log_file" git -C "$gh_agent_worktree" push -u origin "gh-agent"; then
         echo "Error: failed to push gh-agent to origin" >&2
         return 1
     fi
@@ -1778,6 +1817,7 @@ ensure_gh_agent_branch() {
     if [[ -n "$existing_sync_pr_number" ]]; then
         sync_pr_number="$existing_sync_pr_number"
         echo "Found existing sync PR #$sync_pr_number, merging..." >&2
+        append_run_log "$run_log_file" "Found existing sync PR #$sync_pr_number"
     else
         local sync_pr_url
         if sync_pr_url=$(gh pr create \
@@ -1789,15 +1829,19 @@ ensure_gh_agent_branch() {
             2>&1); then
             sync_pr_number=$(echo "$sync_pr_url" | grep -oE '[0-9]+$')
             echo "Created sync PR #$sync_pr_number" >&2
+            append_run_log "$run_log_file" "Created sync PR #$sync_pr_number: $sync_pr_url"
         else
             echo "No new changes to sync from $default_branch into gh-agent." >&2
+            append_run_log "$run_log_file" "No new changes to sync from $default_branch into gh-agent"
         fi
     fi
 
     if [[ -n "$sync_pr_number" ]]; then
         echo "Merging sync PR #$sync_pr_number..." >&2
-        if gh pr merge "$sync_pr_number" --repo "$repo_full_name" --merge 2>/dev/null; then
+        append_run_log "$run_log_file" "Merging sync PR #$sync_pr_number"
+        if run_logged_command "$run_log_file" gh pr merge "$sync_pr_number" --repo "$repo_full_name" --merge; then
             echo "Synced $default_branch into gh-agent via PR #$sync_pr_number" >&2
+            append_run_log "$run_log_file" "Synced $default_branch into gh-agent via PR #$sync_pr_number"
         else
             echo "Error: failed to merge sync PR #$sync_pr_number" >&2
             return 1
@@ -1805,11 +1849,13 @@ ensure_gh_agent_branch() {
     fi
 
     # Step 4: pull gh-agent after merge to bring local worktree up to date
-    if ! git -C "$gh_agent_worktree" pull --ff-only >/dev/null 2>&1; then
+    append_run_log "$run_log_file" "Pulling gh-agent after merge"
+    if ! run_logged_command "$run_log_file" git -C "$gh_agent_worktree" pull --ff-only; then
         echo "Error: failed to pull gh-agent after merge" >&2
         return 1
     fi
 
+    append_run_log "$run_log_file" "gh-agent branch setup complete for $repo_full_name"
     echo "$gh_agent_worktree"
 }
 
@@ -1851,6 +1897,9 @@ process_directory() {
     local dir="$1"
     local agent_provider_mode="${2:-auto}"
     local dry_run="${3:-false}"
+    local timestamp
+
+    timestamp=$(date '+%Y%m%d_%H%M%S')
 
     echo ""
     echo "========================================"
@@ -1871,6 +1920,10 @@ process_directory() {
     repo_owner=${repo_namespace%%/*}
     repo_name=${repo_namespace#*/}
     repo_full_name="$repo_owner/$repo_name"
+    local run_log_file="$LOG_DIR/${timestamp}_${repo_name}_run.log"
+
+    append_run_log "$run_log_file" "Starting processing for $dir"
+    append_run_log "$run_log_file" "Provider mode: $agent_provider_mode"
 
     local selected_agent_provider="$agent_provider_mode"
     local selection_reason="" selection_reset_at=""
@@ -1904,7 +1957,7 @@ process_directory() {
     # Ensure gh-agent branch and worktree exist and are synced with the default branch.
     # This is the only place that touches git operations; the base dir working tree is never modified.
     local gh_agent_worktree
-    if ! gh_agent_worktree=$(ensure_gh_agent_branch "$dir" "$repo_full_name" "$repo_owner" "$repo_name" "$default_branch" "$dry_run"); then
+    if ! gh_agent_worktree=$(ensure_gh_agent_branch "$dir" "$repo_full_name" "$repo_owner" "$repo_name" "$default_branch" "$dry_run" "$run_log_file"); then
         echo "Skipping (could not ensure gh-agent branch): $dir"
         return 0
     fi
@@ -1938,8 +1991,6 @@ process_directory() {
     echo "Branch name: $branch_name"
     echo "Worktree path: $worktree_path"
 
-    local timestamp
-    timestamp=$(date '+%Y%m%d_%H%M%S')
     local log_file="$LOG_DIR/${timestamp}_${repo_name}_issue_${issue_number}_${selected_agent_provider}.json"
     local worktree_plan
     worktree_plan=$(determine_worktree_plan "$dir" "$branch_name" "$worktree_path")
@@ -2180,11 +2231,25 @@ start_monitoring() {
 
     echo "Starting $(basename "$0") monitoring service (v$VERSION)"
     echo "Agent provider mode: $agent_provider"
+    echo "Running first check immediately"
     echo "Checking every 5 minutes (00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)"
     echo "Press Ctrl+C to stop"
     echo ""
 
     local last_run_minute=-1
+
+    echo ""
+    echo "========================================"
+    echo "Starting immediate check at $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "========================================"
+
+    run_check_once "$agent_provider" "$dry_run"
+
+    echo ""
+    echo "========================================"
+    echo "Completed immediate check at $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "Next scheduled check on the next 5-minute mark"
+    echo "========================================"
 
     while true; do
         sleep 60
