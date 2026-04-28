@@ -760,6 +760,35 @@ post_issue_comment() {
     gh issue comment "$issue_number" --repo "$repo_full_name" --body "$body" >/dev/null
 }
 
+close_issue() {
+    local repo_full_name="$1"
+    local issue_number="$2"
+
+    gh issue close "$issue_number" --repo "$repo_full_name" >/dev/null
+}
+
+build_attempt_limit_comment() {
+    cat <<'EOF'
+Agent: Closing this issue because gh-agent has already started work on it 3 times without a validated completion.
+Agent: This prevents the automation from looping indefinitely. Reopen the issue after reviewing the previous progress comments, branch state, and logs if more work is needed.
+EOF
+}
+
+refresh_claude_oauth_token_via_cli() {
+    local refresh_dir
+
+    refresh_dir=$(mktemp -d /tmp/gh-agent-claude-refresh.XXXXXX) || return 1
+
+    (
+        cd "$refresh_dir" || exit 1
+        claude -p --output-format json --no-session-persistence --tools "" -- "hi" >/dev/null
+    )
+    local refresh_status=$?
+
+    rm -rf "$refresh_dir"
+    return "$refresh_status"
+}
+
 ensure_claude_oauth_token() {
     local expires_at_ms now_ms access_token
 
@@ -775,9 +804,23 @@ ensure_claude_oauth_token() {
         expires_at_ms=0
     fi
 
-    if (( now_ms + 300000 >= expires_at_ms )); then
-        echo "Claude OAuth token appears expired or close to expiry. Refresh it through the Claude CLI before using gh-agent auto mode." >&2
-        return 1
+    if (( expires_at_ms > 0 && now_ms + 300000 >= expires_at_ms )); then
+        echo "Claude OAuth token is expired or close to expiry; refreshing through Claude CLI." >&2
+        if ! refresh_claude_oauth_token_via_cli; then
+            echo "Failed to refresh Claude OAuth token through Claude CLI." >&2
+            return 1
+        fi
+
+        expires_at_ms=$(jq -r '.claudeAiOauth.expiresAt // 0' "$CLAUDE_CREDENTIALS_FILE" 2>/dev/null)
+        now_ms=$(( $(date +%s) * 1000 ))
+        if [[ -z "$expires_at_ms" ]] || [[ "$expires_at_ms" == "null" ]]; then
+            expires_at_ms=0
+        fi
+
+        if (( expires_at_ms > 0 && now_ms >= expires_at_ms )); then
+            echo "Claude OAuth token is still expired after Claude CLI refresh attempt." >&2
+            return 1
+        fi
     fi
 
     access_token=$(jq -r '.claudeAiOauth.accessToken // empty' "$CLAUDE_CREDENTIALS_FILE" 2>/dev/null)
@@ -2085,6 +2128,7 @@ process_directory() {
 
     local gh_login issue_snapshot_before issue_agent_comments_before pr_count_before
     local issue_thread_context agent_prompt issue_snapshot_initial prior_agent_prefixed_comments resume_prompt_block=""
+    local start_comment_count
 
     if ! gh_login=$(get_current_gh_login); then
         echo "Skipping (failed to determine GitHub login for post-run validation): $dir"
@@ -2093,6 +2137,26 @@ process_directory() {
 
     if ! issue_snapshot_initial=$(get_issue_runtime_snapshot "$repo_full_name" "$issue_number"); then
         echo "Skipping (failed to fetch initial issue state): $dir"
+        return 0
+    fi
+
+    start_comment_count=$(count_issue_comments_with_prefix_from_snapshot "$issue_snapshot_initial" "Agent: Starting work now.")
+    if (( start_comment_count >= 3 )); then
+        echo "Closing issue #$issue_number after $start_comment_count prior gh-agent starts without validated completion."
+        append_run_log "$run_log_file" "Closing issue #$issue_number after $start_comment_count prior gh-agent starts without validated completion"
+
+        if ! post_issue_comment "$repo_full_name" "$issue_number" "$(build_attempt_limit_comment)"; then
+            echo "Skipping (failed to post attempt-limit comment): $dir"
+            append_run_log "$run_log_file" "Failed to post attempt-limit comment for issue #$issue_number"
+            return 0
+        fi
+
+        if ! close_issue "$repo_full_name" "$issue_number"; then
+            echo "Skipping (failed to close attempt-limited issue #$issue_number): $dir"
+            append_run_log "$run_log_file" "Failed to close attempt-limited issue #$issue_number"
+            return 0
+        fi
+
         return 0
     fi
 
