@@ -6,6 +6,8 @@ VERSION="2.0.0"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gh-agent"
 CONFIG_FILE="$CONFIG_DIR/.config.json"
 LOG_DIR="$CONFIG_DIR/logs"
+CACHE_DIR="$CONFIG_DIR/cache"
+CACHE_MAX_AGE_SECONDS=180
 WORKTREE_DIR="$HOME/.worktrees"
 CLAUDE_CREDENTIALS_FILE="$HOME/.claude/.credentials.json"
 CLAUDE_OAUTH_USAGE_URL="https://api.anthropic.com/api/oauth/usage"
@@ -971,9 +973,55 @@ weekly_window_minutes=$(printf '%s' "$weekly_json" | jq -r '.windowDurationMins 
 EOF
 }
 
+get_provider_cache_file() {
+    local provider="$1"
+    echo "$CACHE_DIR/usage_${provider}.cache"
+}
+
+read_provider_cache() {
+    local provider="$1"
+    local cache_file cached_at now age
+
+    cache_file=$(get_provider_cache_file "$provider")
+    if [[ ! -f "$cache_file" ]]; then
+        return 1
+    fi
+
+    cached_at=$(grep '^cached_at=' "$cache_file" | cut -d= -f2-)
+    if [[ -z "$cached_at" ]]; then
+        return 1
+    fi
+
+    now=$(date +%s)
+    age=$(( now - cached_at ))
+    if (( age > CACHE_MAX_AGE_SECONDS )); then
+        return 1
+    fi
+
+    grep -v '^cached_at=' "$cache_file"
+}
+
+write_provider_cache() {
+    local provider="$1"
+    local state_output="$2"
+    local cache_file
+
+    cache_file=$(get_provider_cache_file "$provider")
+    mkdir -p "$CACHE_DIR"
+    {
+        printf 'cached_at=%s\n' "$(date +%s)"
+        printf '%s\n' "$state_output"
+    } > "$cache_file"
+}
+
 load_provider_state() {
     local provider="$1"
-    local state_output
+    local state_output cached_output
+
+    if cached_output=$(read_provider_cache "$provider"); then
+        eval "$cached_output"
+        return 0
+    fi
 
     case "$provider" in
         claude)
@@ -988,6 +1036,7 @@ load_provider_state() {
             ;;
     esac
 
+    write_provider_cache "$provider" "$state_output"
     eval "$state_output"
 }
 
