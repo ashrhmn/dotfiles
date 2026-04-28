@@ -994,6 +994,51 @@ provider_current_limit_reached() {
     return 1
 }
 
+provider_limit_reached() {
+    local used_percent="$1"
+
+    provider_current_limit_reached "$used_percent"
+}
+
+select_forced_agent_provider() {
+    local provider="$1"
+    local current_reached=1 weekly_reached=1 reset_at reason
+
+    load_provider_state "$provider" || {
+        echo "Concern: failed to fetch $provider usage data for forced provider limit check." >&2
+        return 1
+    }
+
+    if provider_limit_reached "$current_used_percent"; then
+        current_reached=0
+    fi
+    if provider_limit_reached "$weekly_used_percent"; then
+        weekly_reached=0
+    fi
+
+    if [[ "$current_reached" -eq 0 ]] && [[ "$weekly_reached" -eq 0 ]]; then
+        reset_at="$current_reset_at"
+        reason="$provider current and weekly limits are exhausted"
+        if [[ -n "$weekly_reset_at" ]] && { [[ -z "$reset_at" ]] || (( weekly_reset_at < reset_at )); }; then
+            reset_at="$weekly_reset_at"
+        fi
+        echo "skip|$reason|$reset_at"
+        return 0
+    fi
+
+    if [[ "$current_reached" -eq 0 ]]; then
+        echo "skip|$provider current limit is exhausted|$current_reset_at"
+        return 0
+    fi
+
+    if [[ "$weekly_reached" -eq 0 ]]; then
+        echo "skip|$provider weekly limit is exhausted|$weekly_reset_at"
+        return 0
+    fi
+
+    echo "$provider|forced provider is within current and weekly limits|"
+}
+
 print_provider_usage_summary() {
     local provider="$1"
     local current_used="$2"
@@ -1063,6 +1108,7 @@ select_agent_provider() {
     local claude_current_used claude_current_reset claude_weekly_used claude_weekly_reset
     local codex_current_used codex_current_reset codex_weekly_used codex_weekly_reset
     local claude_current_reached=1 codex_current_reached=1 earliest_reset chosen_provider chosen_reason
+    local claude_weekly_reached=1 codex_weekly_reached=1
     local claude_weekly_date codex_weekly_date claude_weekly_unused codex_weekly_unused
 
     load_provider_state "claude" || {
@@ -1094,6 +1140,12 @@ select_agent_provider() {
     if provider_current_limit_reached "$codex_current_used"; then
         codex_current_reached=0
     fi
+    if provider_limit_reached "$claude_weekly_used"; then
+        claude_weekly_reached=0
+    fi
+    if provider_limit_reached "$codex_weekly_used"; then
+        codex_weekly_reached=0
+    fi
 
     if [[ "$claude_current_reached" -eq 0 ]] && [[ "$codex_current_reached" -eq 0 ]]; then
         earliest_reset="$claude_current_reset"
@@ -1104,6 +1156,15 @@ select_agent_provider() {
         return 0
     fi
 
+    if [[ "$claude_weekly_reached" -eq 0 ]] && [[ "$codex_weekly_reached" -eq 0 ]]; then
+        earliest_reset="$claude_weekly_reset"
+        if [[ -n "$codex_weekly_reset" ]] && (( codex_weekly_reset < earliest_reset )); then
+            earliest_reset="$codex_weekly_reset"
+        fi
+        echo "skip|both weekly limits are exhausted|$earliest_reset"
+        return 0
+    fi
+
     if [[ "$claude_current_reached" -eq 0 ]]; then
         echo "codex|Claude current limit is exhausted|"
         return 0
@@ -1111,6 +1172,16 @@ select_agent_provider() {
 
     if [[ "$codex_current_reached" -eq 0 ]]; then
         echo "claude|Codex current limit is exhausted|"
+        return 0
+    fi
+
+    if [[ "$claude_weekly_reached" -eq 0 ]]; then
+        echo "codex|Claude weekly limit is exhausted|"
+        return 0
+    fi
+
+    if [[ "$codex_weekly_reached" -eq 0 ]]; then
+        echo "claude|Codex weekly limit is exhausted|"
         return 0
     fi
 
@@ -2034,11 +2105,25 @@ process_directory() {
             echo "Skipping (both current limits are exhausted until $(format_epoch_timestamp "$selection_reset_at")): $dir"
             return 0
         fi
+    else
+        local selection_result
+        if ! selection_result=$(select_forced_agent_provider "$agent_provider_mode"); then
+            echo "Skipping (forced provider limit check failed): $dir"
+            return 0
+        fi
+
+        IFS='|' read -r selected_agent_provider selection_reason selection_reset_at <<< "$selection_result"
+        if [[ "$selected_agent_provider" == "skip" ]]; then
+            echo "Skipping ($selection_reason until $(format_epoch_timestamp "$selection_reset_at")): $dir"
+            return 0
+        fi
     fi
 
     echo "Agent provider mode: $agent_provider_mode"
     if [[ "$agent_provider_mode" == "auto" ]]; then
         echo "Selected agent provider: $selected_agent_provider ($selection_reason)"
+    else
+        echo "Forced agent provider: $selected_agent_provider ($selection_reason)"
     fi
 
     # Determine default branch via gh CLI
