@@ -217,6 +217,44 @@ count_issue_comments_by_author_from_snapshot() {
     '
 }
 
+count_issue_comments_with_prefix_from_snapshot() {
+    local issue_snapshot="$1"
+    local prefix="$2"
+
+    printf '%s' "$issue_snapshot" | jq -r --arg prefix "$prefix" '
+        (.comments // [])
+        | map(select((.body // "") | startswith($prefix)))
+        | length
+    '
+}
+
+build_resume_context() {
+    local worktree_path="$1"
+    local git_status diff_stat
+
+    git_status=$(git -C "$worktree_path" status --short 2>/dev/null || true)
+    diff_stat=$(git -C "$worktree_path" diff --stat 2>/dev/null || true)
+
+    if [[ -z "$git_status" ]]; then
+        git_status="Working tree has local changes, but git status returned no entries."
+    fi
+
+    if [[ -z "$diff_stat" ]]; then
+        diff_stat="No diff stat available."
+    fi
+
+    cat <<EOF
+Resume context:
+This issue worktree already contains unfinished local changes from a previous run.
+
+Current git status:
+$git_status
+
+Current git diff --stat:
+$diff_stat
+EOF
+}
+
 determine_worktree_plan() {
     local repo_dir="$1"
     local branch_name="$2"
@@ -1910,6 +1948,8 @@ process_directory() {
     local agent_provider_mode="${2:-auto}"
     local dry_run="${3:-false}"
     local timestamp
+    local resume_run="false"
+    local resume_context=""
 
     timestamp=$(date '+%Y%m%d_%H%M%S')
 
@@ -2020,15 +2060,14 @@ process_directory() {
             return 0
         fi
 
-        if is_working_tree_dirty "$worktree_path"; then
-            echo "Skipping (dirty worktree): $worktree_path"
-            return 0
-        fi
-
         # Copy .env files from base dir so the agent has access to local config
         copy_env_files "$dir" "$worktree_path"
 
-        if has_upstream_branch "$worktree_path"; then
+        if is_working_tree_dirty "$worktree_path"; then
+            resume_run="true"
+            append_run_log "$run_log_file" "Resuming existing dirty issue worktree: $worktree_path"
+            echo "Resuming from dirty worktree: $worktree_path"
+        elif has_upstream_branch "$worktree_path"; then
             echo "Pulling latest changes in worktree..."
             if ! pull_fast_forward "$worktree_path" >/dev/null 2>&1; then
                 echo "Skipping (failed to pull latest changes in worktree): $worktree_path"
@@ -2045,11 +2084,33 @@ process_directory() {
     echo "Starting to resolve issue #$issue_number..."
 
     local gh_login issue_snapshot_before issue_agent_comments_before pr_count_before
-    local issue_thread_context agent_prompt
+    local issue_thread_context agent_prompt issue_snapshot_initial prior_agent_prefixed_comments resume_prompt_block=""
 
     if ! gh_login=$(get_current_gh_login); then
         echo "Skipping (failed to determine GitHub login for post-run validation): $dir"
         return 0
+    fi
+
+    if ! issue_snapshot_initial=$(get_issue_runtime_snapshot "$repo_full_name" "$issue_number"); then
+        echo "Skipping (failed to fetch initial issue state): $dir"
+        return 0
+    fi
+
+    if [[ "$resume_run" == "true" ]]; then
+        prior_agent_prefixed_comments=$(count_issue_comments_with_prefix_from_snapshot "$issue_snapshot_initial" "Agent: ")
+        if (( prior_agent_prefixed_comments == 0 )); then
+            echo "Concern: issue worktree is dirty but there are no prior Agent: comments on issue #$issue_number; refusing to guess the resume context."
+            append_run_log "$run_log_file" "Concern: dirty issue worktree without prior Agent: comments for issue #$issue_number"
+            return 0
+        fi
+
+        resume_context=$(build_resume_context "$worktree_path")
+        resume_prompt_block=$(cat <<EOF
+$resume_context
+
+This is a resume run. Before making changes, inspect \`git status\`, \`git diff --stat\`, and \`git diff\`, then continue from the existing local branch state. Do not discard or overwrite unfinished local changes unless doing so is clearly necessary to complete the issue safely.
+EOF
+)
     fi
 
     if ! issue_thread_context=$(build_issue_thread_context "$repo_full_name" "$issue_number"); then
@@ -2058,6 +2119,7 @@ process_directory() {
     fi
 
     if [[ "$dry_run" == "true" ]]; then
+        issue_snapshot_before="$issue_snapshot_initial"
         print_dry_run_summary \
             "$dir" \
             "$repo_full_name" \
@@ -2083,6 +2145,8 @@ Before planning or coding, fetch and read the full current issue conversation wi
 Here is the current issue conversation snapshot for convenience:
 
 $issue_thread_context
+
+$resume_prompt_block
 
 Treat failing verification commands as part of the task. If analyze, test, typecheck, lint, or build commands fail, investigate and fix them when it is reasonably possible and necessary to complete the branch. Do not assume a failing command is an automatic blocker, and do not assume an existing repo error is out of scope if it blocks successful completion on this branch.
 Normal completion flow: implement the solution, ensure all relevant tests pass and build/lint/typecheck succeeds when those commands exist, commit without co-author using conventional commit format if the repo uses it, push to $branch_name, and create a PR via gh cli targeting $default_branch that references issue #$issue_number. After the PR is created, close issue #$issue_number via gh cli.
