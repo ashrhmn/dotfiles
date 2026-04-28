@@ -638,6 +638,16 @@ format_epoch_timestamp() {
     date -d "@$epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "$epoch"
 }
 
+format_epoch_date() {
+    local epoch="$1"
+
+    if [[ -z "$epoch" ]] || [[ "$epoch" == "null" ]]; then
+        return 1
+    fi
+
+    date -d "@$epoch" '+%Y-%m-%d' 2>/dev/null || echo "$epoch"
+}
+
 iso_to_epoch() {
     local iso_timestamp="$1"
 
@@ -886,6 +896,7 @@ print_provider_usage_summary() {
 
 show_usage() {
     local provider current_used_percent current_reset_at weekly_used_percent weekly_reset_at
+    local auto_selection selected_provider selection_reason selection_reset_at
 
     echo "Fetching Claude usage..."
     load_provider_state "claude"
@@ -905,12 +916,30 @@ show_usage() {
     print_provider_usage_summary "claude" "$claude_current_used" "$claude_current_reset" "$claude_weekly_used" "$claude_weekly_reset"
     echo ""
     print_provider_usage_summary "codex" "$codex_current_used" "$codex_current_reset" "$codex_weekly_used" "$codex_weekly_reset"
+
+    if auto_selection=$(select_agent_provider); then
+        IFS='|' read -r selected_provider selection_reason selection_reset_at <<< "$auto_selection"
+        echo ""
+        if [[ "$selected_provider" == "skip" ]]; then
+            echo "auto mode: skip"
+            echo "  reason: both current 5-hour limits are exhausted"
+            echo "  next retry at: $(format_epoch_timestamp "$selection_reset_at")"
+        else
+            echo "auto mode: $selected_provider"
+            echo "  reason: $selection_reason"
+        fi
+    else
+        echo ""
+        echo "auto mode: unavailable"
+        echo "  reason: could not determine both providers reliably"
+    fi
 }
 
 select_agent_provider() {
     local claude_current_used claude_current_reset claude_weekly_used claude_weekly_reset
     local codex_current_used codex_current_reset codex_weekly_used codex_weekly_reset
     local claude_current_reached=1 codex_current_reached=1 earliest_reset chosen_provider chosen_reason
+    local claude_weekly_date codex_weekly_date claude_weekly_unused codex_weekly_unused
 
     load_provider_state "claude" || {
         echo "Concern: failed to fetch Claude usage data for automatic provider selection." >&2
@@ -958,6 +987,26 @@ select_agent_provider() {
 
     if [[ "$codex_current_reached" -eq 0 ]]; then
         echo "claude|Codex current limit is exhausted|"
+        return 0
+    fi
+
+    claude_weekly_date=$(format_epoch_date "$claude_weekly_reset")
+    codex_weekly_date=$(format_epoch_date "$codex_weekly_reset")
+    claude_weekly_unused=$(awk -v used="$claude_weekly_used" 'BEGIN { printf "%.3f", 100 - used }')
+    codex_weekly_unused=$(awk -v used="$codex_weekly_used" 'BEGIN { printf "%.3f", 100 - used }')
+
+    if [[ "$claude_weekly_date" == "$codex_weekly_date" ]]; then
+        chosen_provider="claude"
+        chosen_reason="both weekly resets are on $claude_weekly_date, and Claude has more weekly budget remaining"
+
+        if awk -v codex_unused="$codex_weekly_unused" -v claude_unused="$claude_weekly_unused" 'BEGIN { exit !(codex_unused > claude_unused) }'; then
+            chosen_provider="codex"
+            chosen_reason="both weekly resets are on $codex_weekly_date, and Codex has more weekly budget remaining"
+        elif awk -v codex_unused="$codex_weekly_unused" -v claude_unused="$claude_weekly_unused" 'BEGIN { exit !(codex_unused == claude_unused) }'; then
+            chosen_reason="both weekly resets are on $claude_weekly_date and weekly remaining budget is tied, so the stable default is Claude"
+        fi
+
+        echo "$chosen_provider|$chosen_reason|"
         return 0
     fi
 
