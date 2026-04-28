@@ -763,6 +763,7 @@ fetch_claude_usage_json() {
 
 fetch_claude_usage_state() {
     local usage_json five_hour_reset seven_day_reset five_hour_used seven_day_used
+    local current_reset_epoch=""
 
     usage_json=$(fetch_claude_usage_json) || return 1
 
@@ -771,15 +772,19 @@ fetch_claude_usage_state() {
     five_hour_used=$(printf '%s' "$usage_json" | jq -r '.five_hour.utilization // empty' 2>/dev/null)
     seven_day_used=$(printf '%s' "$usage_json" | jq -r '.seven_day.utilization // empty' 2>/dev/null)
 
-    if [[ -z "$five_hour_reset" ]] || [[ -z "$seven_day_reset" ]] || [[ -z "$five_hour_used" ]] || [[ -z "$seven_day_used" ]]; then
-        echo "Claude usage response is missing five_hour or seven_day utilization/reset data" >&2
+    if [[ -n "$five_hour_reset" ]]; then
+        current_reset_epoch=$(iso_to_epoch "$five_hour_reset")
+    fi
+
+    if [[ -z "$seven_day_reset" ]] || [[ -z "$five_hour_used" ]] || [[ -z "$seven_day_used" ]]; then
+        echo "Claude usage response is missing seven_day data or five_hour utilization data" >&2
         return 1
     fi
 
     cat <<EOF
 provider=claude
 current_used_percent=$five_hour_used
-current_reset_at=$(iso_to_epoch "$five_hour_reset")
+current_reset_at=$current_reset_epoch
 current_window_minutes=300
 weekly_used_percent=$seven_day_used
 weekly_reset_at=$(iso_to_epoch "$seven_day_reset")
@@ -915,13 +920,20 @@ print_provider_usage_summary() {
     local weekly_used="$4"
     local weekly_reset="$5"
     local current_status="available"
+    local current_reset_label
 
     if provider_current_limit_reached "$current_used"; then
         current_status="limit reached"
     fi
 
+    if [[ -n "$current_reset" ]] && [[ "$current_reset" != "null" ]]; then
+        current_reset_label=$(format_epoch_timestamp "$current_reset")
+    else
+        current_reset_label="not started yet"
+    fi
+
     echo "$provider:"
-    echo "  current window: $(format_percent "$current_used") used, reset $(format_epoch_timestamp "$current_reset"), status $current_status"
+    echo "  current window: $(format_percent "$current_used") used, reset $current_reset_label, status $current_status"
     echo "  weekly window:  $(format_percent "$weekly_used") used, reset $(format_epoch_timestamp "$weekly_reset")"
 }
 
