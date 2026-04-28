@@ -7,6 +7,9 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gh-agent"
 CONFIG_FILE="$CONFIG_DIR/.config.json"
 LOG_DIR="$CONFIG_DIR/logs"
 WORKTREE_DIR="$HOME/.worktrees"
+CLAUDE_CREDENTIALS_FILE="$HOME/.claude/.credentials.json"
+CLAUDE_OAUTH_USAGE_URL="https://api.anthropic.com/api/oauth/usage"
+CLAUDE_OAUTH_BETA_HEADER="oauth-2025-04-20"
 
 usage() {
     local cmd
@@ -21,13 +24,15 @@ Commands:
     remove [PATH]       Remove directory from watch list
     list                List all watched directories
     dry-run [PATH]      Preview planned issue handling without making changes
-    start [--codex]     Start monitoring (runs forever, checks every 5 minutes)
+    start [OPTIONS]     Start monitoring (runs forever, checks every 5 minutes)
+    usage               Show current Claude and Codex usage details
     logs                Show recent log files
     version             Show version information
 
 Start options:
-    --claude            Use Claude for the start command (default)
+    --claude            Force Claude for the start command
     --codex             Use Codex for the start command
+    --auto              Auto-select provider based on live limits (default)
     --dry-run           Preview actions only; never pull, create worktrees, or run agents
 
 General options:
@@ -41,9 +46,10 @@ Examples:
     $cmd list                   Show all watched directories
     $cmd dry-run                Preview one immediate pass for all watched directories
     $cmd dry-run .              Preview one immediate pass for the current repository
-    $cmd start                  Start the monitoring service with Claude
+    $cmd start                  Start the monitoring service in auto mode
     $cmd start --codex          Start the monitoring service with Codex
     $cmd start --dry-run        Run one immediate preview pass and exit
+    $cmd usage                  Show Claude and Codex limit usage
     $cmd logs                   List recent log files
 
 Configuration:
@@ -630,6 +636,400 @@ format_epoch_timestamp() {
     fi
 
     date -d "@$epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "$epoch"
+}
+
+iso_to_epoch() {
+    local iso_timestamp="$1"
+
+    if [[ -z "$iso_timestamp" ]] || [[ "$iso_timestamp" == "null" ]]; then
+        return 1
+    fi
+
+    date -d "$iso_timestamp" '+%s' 2>/dev/null
+}
+
+epoch_to_iso_utc() {
+    local epoch="$1"
+
+    if [[ -z "$epoch" ]] || [[ "$epoch" == "null" ]]; then
+        return 1
+    fi
+
+    date -u -d "@$epoch" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null
+}
+
+format_percent() {
+    local value="$1"
+
+    if [[ -z "$value" ]] || [[ "$value" == "null" ]]; then
+        echo "unknown"
+        return 0
+    fi
+
+    if [[ "$value" == *.* ]]; then
+        printf '%.1f%%' "$value"
+    else
+        printf '%s%%' "$value"
+    fi
+}
+
+post_issue_comment() {
+    local repo_full_name="$1"
+    local issue_number="$2"
+    local body="$3"
+
+    gh issue comment "$issue_number" --repo "$repo_full_name" --body "$body" >/dev/null
+}
+
+ensure_claude_oauth_token() {
+    local expires_at_ms now_ms access_token
+
+    if [[ ! -f "$CLAUDE_CREDENTIALS_FILE" ]]; then
+        echo "Claude credentials file not found: $CLAUDE_CREDENTIALS_FILE" >&2
+        return 1
+    fi
+
+    expires_at_ms=$(jq -r '.claudeAiOauth.expiresAt // 0' "$CLAUDE_CREDENTIALS_FILE" 2>/dev/null)
+    now_ms=$(( $(date +%s) * 1000 ))
+
+    if [[ -z "$expires_at_ms" ]] || [[ "$expires_at_ms" == "null" ]]; then
+        expires_at_ms=0
+    fi
+
+    if (( now_ms + 300000 >= expires_at_ms )); then
+        echo "Claude OAuth token appears expired or close to expiry. Refresh it through the Claude CLI before using gh-agent auto mode." >&2
+        return 1
+    fi
+
+    access_token=$(jq -r '.claudeAiOauth.accessToken // empty' "$CLAUDE_CREDENTIALS_FILE" 2>/dev/null)
+    if [[ -z "$access_token" ]]; then
+        echo "Claude access token is missing from $CLAUDE_CREDENTIALS_FILE" >&2
+        return 1
+    fi
+
+    printf '%s\n' "$access_token"
+}
+
+fetch_claude_usage_json() {
+    local access_token
+
+    access_token=$(ensure_claude_oauth_token) || return 1
+
+    curl -fsS "$CLAUDE_OAUTH_USAGE_URL" \
+        -H "Authorization: Bearer $access_token" \
+        -H "anthropic-beta: $CLAUDE_OAUTH_BETA_HEADER"
+}
+
+fetch_claude_usage_state() {
+    local usage_json five_hour_reset seven_day_reset five_hour_used seven_day_used
+
+    usage_json=$(fetch_claude_usage_json) || return 1
+
+    five_hour_reset=$(printf '%s' "$usage_json" | jq -r '.five_hour.resets_at // empty' 2>/dev/null)
+    seven_day_reset=$(printf '%s' "$usage_json" | jq -r '.seven_day.resets_at // empty' 2>/dev/null)
+    five_hour_used=$(printf '%s' "$usage_json" | jq -r '.five_hour.utilization // empty' 2>/dev/null)
+    seven_day_used=$(printf '%s' "$usage_json" | jq -r '.seven_day.utilization // empty' 2>/dev/null)
+
+    if [[ -z "$five_hour_reset" ]] || [[ -z "$seven_day_reset" ]] || [[ -z "$five_hour_used" ]] || [[ -z "$seven_day_used" ]]; then
+        echo "Claude usage response is missing five_hour or seven_day utilization/reset data" >&2
+        return 1
+    fi
+
+    cat <<EOF
+provider=claude
+current_used_percent=$five_hour_used
+current_reset_at=$(iso_to_epoch "$five_hour_reset")
+current_window_minutes=300
+weekly_used_percent=$seven_day_used
+weekly_reset_at=$(iso_to_epoch "$seven_day_reset")
+weekly_window_minutes=10080
+EOF
+}
+
+fetch_codex_usage_json() {
+    local init_response rpc_response
+
+    coproc CODEX_APP_SERVER { codex app-server --listen stdio:// 2>/dev/null; }
+
+    printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","clientInfo":{"name":"gh-agent","version":"2.0.0"}}}' >&"${CODEX_APP_SERVER[1]}"
+    if ! IFS= read -r init_response <&"${CODEX_APP_SERVER[0]}"; then
+        echo "Failed to read Codex initialize response" >&2
+        exec {CODEX_APP_SERVER[1]}>&-
+        wait "$CODEX_APP_SERVER_PID" 2>/dev/null || true
+        return 1
+    fi
+
+    printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' >&"${CODEX_APP_SERVER[1]}"
+    printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"account/rateLimits/read","params":{}}' >&"${CODEX_APP_SERVER[1]}"
+    if ! IFS= read -r rpc_response <&"${CODEX_APP_SERVER[0]}"; then
+        echo "Failed to read Codex rate limit response" >&2
+        exec {CODEX_APP_SERVER[1]}>&-
+        wait "$CODEX_APP_SERVER_PID" 2>/dev/null || true
+        return 1
+    fi
+
+    exec {CODEX_APP_SERVER[1]}>&-
+    cat <&"${CODEX_APP_SERVER[0]}" >/dev/null 2>&1 || true
+    wait "$CODEX_APP_SERVER_PID" 2>/dev/null || true
+
+    printf '%s\n' "$rpc_response" | jq -c '.result' 2>/dev/null
+}
+
+fetch_codex_usage_state() {
+    local usage_json current_json weekly_json current_used current_reset weekly_used weekly_reset
+
+    usage_json=$(fetch_codex_usage_json) || return 1
+    if [[ -z "$usage_json" ]] || [[ "$usage_json" == "null" ]]; then
+        echo "Codex rate limit RPC returned no result payload" >&2
+        return 1
+    fi
+
+    current_json=$(printf '%s' "$usage_json" | jq -c '
+        [
+            .rateLimits.primary?,
+            .rateLimits.secondary?,
+            (.rateLimitsByLimitId // {} | to_entries[]?.value.primary?),
+            (.rateLimitsByLimitId // {} | to_entries[]?.value.secondary?)
+        ]
+        | map(select(.windowDurationMins == 300))
+        | .[0]
+    ' 2>/dev/null)
+    weekly_json=$(printf '%s' "$usage_json" | jq -c '
+        [
+            .rateLimits.primary?,
+            .rateLimits.secondary?,
+            (.rateLimitsByLimitId // {} | to_entries[]?.value.primary?),
+            (.rateLimitsByLimitId // {} | to_entries[]?.value.secondary?)
+        ]
+        | map(select(.windowDurationMins == 10080))
+        | .[0]
+    ' 2>/dev/null)
+
+    if [[ -z "$current_json" ]] || [[ "$current_json" == "null" ]] || [[ -z "$weekly_json" ]] || [[ "$weekly_json" == "null" ]]; then
+        echo "Codex rate limit RPC is missing 300-minute or 10080-minute windows" >&2
+        return 1
+    fi
+
+    current_used=$(printf '%s' "$current_json" | jq -r '.usedPercent // empty')
+    current_reset=$(printf '%s' "$current_json" | jq -r '.resetsAt // empty')
+    weekly_used=$(printf '%s' "$weekly_json" | jq -r '.usedPercent // empty')
+    weekly_reset=$(printf '%s' "$weekly_json" | jq -r '.resetsAt // empty')
+
+    if [[ -z "$current_used" ]] || [[ -z "$current_reset" ]] || [[ -z "$weekly_used" ]] || [[ -z "$weekly_reset" ]]; then
+        echo "Codex rate limit RPC is missing required utilization/reset fields" >&2
+        return 1
+    fi
+
+    cat <<EOF
+provider=codex
+current_used_percent=$current_used
+current_reset_at=$current_reset
+current_window_minutes=$(printf '%s' "$current_json" | jq -r '.windowDurationMins // empty')
+weekly_used_percent=$weekly_used
+weekly_reset_at=$weekly_reset
+weekly_window_minutes=$(printf '%s' "$weekly_json" | jq -r '.windowDurationMins // empty')
+EOF
+}
+
+load_provider_state() {
+    local provider="$1"
+    local state_output
+
+    case "$provider" in
+        claude)
+            state_output=$(fetch_claude_usage_state) || return 1
+            ;;
+        codex)
+            state_output=$(fetch_codex_usage_state) || return 1
+            ;;
+        *)
+            echo "Unsupported provider: $provider" >&2
+            return 1
+            ;;
+    esac
+
+    eval "$state_output"
+}
+
+provider_current_limit_reached() {
+    local used_percent="$1"
+    local used_int
+
+    if [[ -z "$used_percent" ]] || [[ "$used_percent" == "null" ]]; then
+        return 2
+    fi
+
+    used_int=$(printf '%.0f' "$used_percent" 2>/dev/null) || return 2
+    if (( used_int >= 100 )); then
+        return 0
+    fi
+
+    return 1
+}
+
+print_provider_usage_summary() {
+    local provider="$1"
+    local current_used="$2"
+    local current_reset="$3"
+    local weekly_used="$4"
+    local weekly_reset="$5"
+    local current_status="available"
+
+    if provider_current_limit_reached "$current_used"; then
+        current_status="limit reached"
+    fi
+
+    echo "$provider:"
+    echo "  current window: $(format_percent "$current_used") used, reset $(format_epoch_timestamp "$current_reset"), status $current_status"
+    echo "  weekly window:  $(format_percent "$weekly_used") used, reset $(format_epoch_timestamp "$weekly_reset")"
+}
+
+show_usage() {
+    local provider current_used_percent current_reset_at weekly_used_percent weekly_reset_at
+
+    echo "Fetching Claude usage..."
+    load_provider_state "claude"
+    local claude_current_used="$current_used_percent"
+    local claude_current_reset="$current_reset_at"
+    local claude_weekly_used="$weekly_used_percent"
+    local claude_weekly_reset="$weekly_reset_at"
+
+    echo "Fetching Codex usage..."
+    load_provider_state "codex"
+    local codex_current_used="$current_used_percent"
+    local codex_current_reset="$current_reset_at"
+    local codex_weekly_used="$weekly_used_percent"
+    local codex_weekly_reset="$weekly_reset_at"
+
+    echo ""
+    print_provider_usage_summary "claude" "$claude_current_used" "$claude_current_reset" "$claude_weekly_used" "$claude_weekly_reset"
+    echo ""
+    print_provider_usage_summary "codex" "$codex_current_used" "$codex_current_reset" "$codex_weekly_used" "$codex_weekly_reset"
+}
+
+select_agent_provider() {
+    local claude_current_used claude_current_reset claude_weekly_used claude_weekly_reset
+    local codex_current_used codex_current_reset codex_weekly_used codex_weekly_reset
+    local claude_current_reached=1 codex_current_reached=1 earliest_reset chosen_provider chosen_reason
+
+    load_provider_state "claude" || {
+        echo "Concern: failed to fetch Claude usage data for automatic provider selection." >&2
+        return 1
+    }
+    claude_current_used="$current_used_percent"
+    claude_current_reset="$current_reset_at"
+    claude_weekly_used="$weekly_used_percent"
+    claude_weekly_reset="$weekly_reset_at"
+
+    load_provider_state "codex" || {
+        echo "Concern: failed to fetch Codex usage data for automatic provider selection." >&2
+        return 1
+    }
+    codex_current_used="$current_used_percent"
+    codex_current_reset="$current_reset_at"
+    codex_weekly_used="$weekly_used_percent"
+    codex_weekly_reset="$weekly_reset_at"
+
+    if [[ -z "$claude_weekly_reset" ]] || [[ -z "$codex_weekly_reset" ]]; then
+        echo "Concern: weekly reset data is missing for one or both providers, so automatic selection would be ambiguous." >&2
+        return 1
+    fi
+
+    if provider_current_limit_reached "$claude_current_used"; then
+        claude_current_reached=0
+    fi
+    if provider_current_limit_reached "$codex_current_used"; then
+        codex_current_reached=0
+    fi
+
+    if [[ "$claude_current_reached" -eq 0 ]] && [[ "$codex_current_reached" -eq 0 ]]; then
+        earliest_reset="$claude_current_reset"
+        if [[ -n "$codex_current_reset" ]] && (( codex_current_reset < earliest_reset )); then
+            earliest_reset="$codex_current_reset"
+        fi
+        echo "skip|both current limits are exhausted|$earliest_reset"
+        return 0
+    fi
+
+    if [[ "$claude_current_reached" -eq 0 ]]; then
+        echo "codex|Claude current limit is exhausted|"
+        return 0
+    fi
+
+    if [[ "$codex_current_reached" -eq 0 ]]; then
+        echo "claude|Codex current limit is exhausted|"
+        return 0
+    fi
+
+    chosen_provider="claude"
+    chosen_reason="Claude weekly window resets sooner"
+    if (( codex_weekly_reset < claude_weekly_reset )); then
+        chosen_provider="codex"
+        chosen_reason="Codex weekly window resets sooner"
+    fi
+
+    echo "$chosen_provider|$chosen_reason|"
+}
+
+build_agent_start_comment() {
+    local provider="$1"
+
+    cat <<EOF
+Agent: Starting work now.
+Agent: I will post progress updates here during investigation and implementation, including notable design or implementation decisions.
+EOF
+}
+
+extract_log_token_breakdown() {
+    local provider="$1"
+    local log_file="$2"
+
+    case "$provider" in
+        claude)
+            jq -rs '
+                map(select(.type == "result") | .usage)
+                | reduce .[] as $usage (
+                    {input: 0, output: 0, cache_read: 0, cache_write: 0};
+                    .input += ($usage.input_tokens // 0)
+                    | .output += ($usage.output_tokens // 0)
+                    | .cache_read += ($usage.cache_read_input_tokens // 0)
+                    | .cache_write += ($usage.cache_creation_input_tokens // 0)
+                )
+                | "input=\(.input), output=\(.output), cache_read=\(.cache_read), cache_write=\(.cache_write)"
+            ' "$log_file" 2>/dev/null
+            ;;
+        codex)
+            jq -rs '
+                map(select(.type == "turn.completed") | .usage)
+                | reduce .[] as $usage (
+                    {input: 0, cached_input: 0, output: 0, reasoning_output: 0};
+                    .input += ($usage.input_tokens // 0)
+                    | .cached_input += ($usage.cached_input_tokens // 0)
+                    | .output += ($usage.output_tokens // 0)
+                    | .reasoning_output += ($usage.reasoning_output_tokens // 0)
+                )
+                | "input=\(.input), cached_input=\(.cached_input), output=\(.output), reasoning_output=\(.reasoning_output)"
+            ' "$log_file" 2>/dev/null
+            ;;
+    esac
+}
+
+build_agent_end_comment() {
+    local provider="$1"
+    local log_file="$2"
+    local token_breakdown
+
+    : "$provider"
+
+    token_breakdown=$(extract_log_token_breakdown "$provider" "$log_file")
+    if [[ -z "$token_breakdown" ]]; then
+        token_breakdown="unavailable"
+    fi
+
+    cat <<EOF
+Agent: Finished work for this run.
+Agent: Token breakdown: $token_breakdown
+EOF
 }
 
 summarize_tool_input() {
@@ -1400,7 +1800,7 @@ sync_feature_to_gh_agent() {
 
 process_directory() {
     local dir="$1"
-    local agent_provider="${2:-claude}"
+    local agent_provider_mode="${2:-auto}"
     local dry_run="${3:-false}"
 
     echo ""
@@ -1422,6 +1822,27 @@ process_directory() {
     repo_owner=${repo_namespace%%/*}
     repo_name=${repo_namespace#*/}
     repo_full_name="$repo_owner/$repo_name"
+
+    local selected_agent_provider="$agent_provider_mode"
+    local selection_reason="" selection_reset_at=""
+    if [[ "$agent_provider_mode" == "auto" ]]; then
+        local selection_result
+        if ! selection_result=$(select_agent_provider); then
+            echo "Skipping (automatic provider selection failed): $dir"
+            return 0
+        fi
+
+        IFS='|' read -r selected_agent_provider selection_reason selection_reset_at <<< "$selection_result"
+        if [[ "$selected_agent_provider" == "skip" ]]; then
+            echo "Skipping (both current limits are exhausted until $(format_epoch_timestamp "$selection_reset_at")): $dir"
+            return 0
+        fi
+    fi
+
+    echo "Agent provider mode: $agent_provider_mode"
+    if [[ "$agent_provider_mode" == "auto" ]]; then
+        echo "Selected agent provider: $selected_agent_provider ($selection_reason)"
+    fi
 
     # Determine default branch via gh CLI
     local default_branch
@@ -1470,7 +1891,7 @@ process_directory() {
 
     local timestamp
     timestamp=$(date '+%Y%m%d_%H%M%S')
-    local log_file="$LOG_DIR/${timestamp}_${repo_name}_issue_${issue_number}_${agent_provider}.json"
+    local log_file="$LOG_DIR/${timestamp}_${repo_name}_issue_${issue_number}_${selected_agent_provider}.json"
     local worktree_plan
     worktree_plan=$(determine_worktree_plan "$dir" "$branch_name" "$worktree_path")
 
@@ -1519,17 +1940,6 @@ process_directory() {
         return 0
     fi
 
-    if ! issue_snapshot_before=$(get_issue_runtime_snapshot "$repo_full_name" "$issue_number"); then
-        echo "Skipping (failed to fetch initial issue state for validation): $dir"
-        return 0
-    fi
-
-    issue_agent_comments_before=$(count_issue_comments_by_author_from_snapshot "$issue_snapshot_before" "$gh_login")
-    if ! pr_count_before=$(get_pr_count_for_branch "$repo_full_name" "$branch_name"); then
-        echo "Skipping (failed to fetch initial PR state for validation): $dir"
-        return 0
-    fi
-
     if ! issue_thread_context=$(build_issue_thread_context "$repo_full_name" "$issue_number"); then
         echo "Skipping (failed to fetch full issue conversation): $dir"
         return 0
@@ -1566,13 +1976,14 @@ Treat failing verification commands as part of the task. If analyze, test, typec
 Normal completion flow: implement the solution, ensure all relevant tests pass and build/lint/typecheck succeeds when those commands exist, commit without co-author using conventional commit format if the repo uses it, push to $branch_name, and create a PR via gh cli targeting $default_branch that references issue #$issue_number. After the PR is created, close issue #$issue_number via gh cli.
 Blocker flow: only if you cannot complete the task after reasonable investigation because you need external input, missing access, or an upstream problem you cannot safely fix, do not create a PR. Instead, if there are changes, commit and push the current branch state to $branch_name, add a comment to issue #$issue_number via gh cli describing the blocker and exactly what is needed to unblock it, and close issue #$issue_number via gh cli so it will not be retried until reopened.
 If you hit a blocker, stop only after the blocker flow above is complete and explain the blocker clearly.
+Post progress updates back to issue #$issue_number with gh cli comments during the run. Prefix every issue comment body with "Agent: ". Provide several mid-run updates with useful context, and post comments when you make meaningful design or implementation decisions. Do not spam every small step, but keep the issue updated enough that a human can follow the work.
 The wrapper will validate the final git and GitHub state after you finish, so do not claim completion unless the required side effects were actually performed.
 Follow AGENTS.md and CLAUDE.md if present in the current directory or accessible added directories.
 Never mention Claude, Claude Code, Codex, GPT, AI, or any LLM in commits, code comments, PR descriptions, or GitHub comments.
 EOF
 )
 
-    echo "Agent provider: $agent_provider"
+    echo "Agent provider: $selected_agent_provider"
     echo "Logging to: $log_file"
     echo ""
 
@@ -1580,8 +1991,27 @@ EOF
     local notification_file
     notification_file=$(mktemp)
 
+    if ! post_issue_comment "$repo_full_name" "$issue_number" "$(build_agent_start_comment "$selected_agent_provider")"; then
+        echo "Skipping (failed to post start comment): $dir"
+        rm -f "$notification_file"
+        return 0
+    fi
+
+    if ! issue_snapshot_before=$(get_issue_runtime_snapshot "$repo_full_name" "$issue_number"); then
+        echo "Skipping (failed to fetch initial issue state for validation): $dir"
+        rm -f "$notification_file"
+        return 0
+    fi
+
+    issue_agent_comments_before=$(count_issue_comments_by_author_from_snapshot "$issue_snapshot_before" "$gh_login")
+    if ! pr_count_before=$(get_pr_count_for_branch "$repo_full_name" "$branch_name"); then
+        echo "Skipping (failed to fetch initial PR state for validation): $dir"
+        rm -f "$notification_file"
+        return 0
+    fi
+
     local agent_exit_status=0
-    case "$agent_provider" in
+    case "$selected_agent_provider" in
         claude)
             run_claude_agent "$worktree_path" "$dir" "$agent_prompt" "$log_file" "$notification_file" || agent_exit_status=$?
             ;;
@@ -1589,7 +2019,7 @@ EOF
             run_codex_agent "$worktree_path" "$dir" "$agent_prompt" "$log_file" "$notification_file" || agent_exit_status=$?
             ;;
         *)
-            echo "Unsupported agent provider: $agent_provider"
+            echo "Unsupported agent provider: $selected_agent_provider"
             rm -f "$notification_file"
             return 0
             ;;
@@ -1611,9 +2041,13 @@ EOF
         validation_status=$?
     fi
 
+    if ! post_issue_comment "$repo_full_name" "$issue_number" "$(build_agent_end_comment "$selected_agent_provider" "$log_file")"; then
+        echo "Warning: failed to post end comment for issue #$issue_number" | tee -a "$notification_file"
+    fi
+
     # Send telegram notification silently
     if [[ -s "$notification_file" ]]; then
-        tgn -t "gh-agent [$agent_provider]: $dir" < "$notification_file" 2>/dev/null >/dev/null || true
+        tgn -t "gh-agent [$selected_agent_provider]: $dir" < "$notification_file" 2>/dev/null >/dev/null || true
     fi
     rm -f "$notification_file"
 
@@ -1653,7 +2087,7 @@ is_fifth_minute() {
 }
 
 run_check_once() {
-    local agent_provider="${1:-claude}"
+    local agent_provider="${1:-auto}"
     local dry_run="${2:-false}"
     local single_dir="$3"
 
@@ -1681,14 +2115,14 @@ run_check_once() {
 }
 
 start_monitoring() {
-    local agent_provider="${1:-claude}"
+    local agent_provider="${1:-auto}"
     local dry_run="${2:-false}"
 
     ensure_config
 
     if [[ "$dry_run" == "true" ]]; then
         echo "Running $(basename "$0") dry run (v$VERSION)"
-        echo "Agent provider: $agent_provider"
+        echo "Agent provider mode: $agent_provider"
         echo "Mode: dry run"
         echo ""
         run_check_once "$agent_provider" "true"
@@ -1696,7 +2130,7 @@ start_monitoring() {
     fi
 
     echo "Starting $(basename "$0") monitoring service (v$VERSION)"
-    echo "Agent provider: $agent_provider"
+    echo "Agent provider mode: $agent_provider"
     echo "Checking every 5 minutes (00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)"
     echo "Press Ctrl+C to stop"
     echo ""
@@ -1761,12 +2195,20 @@ main() {
                 list_logs
                 exit 0
                 ;;
+            usage)
+                show_usage
+                exit 0
+                ;;
             dry-run)
                 shift
-                local dry_run_agent_provider="claude"
+                local dry_run_agent_provider="auto"
                 local dry_run_path=""
                 while [[ $# -gt 0 ]]; do
                     case $1 in
+                        --auto)
+                            dry_run_agent_provider="auto"
+                            shift
+                            ;;
                         --claude)
                             dry_run_agent_provider="claude"
                             shift
@@ -1800,10 +2242,14 @@ main() {
                 ;;
             start)
                 shift
-                local agent_provider="claude"
+                local agent_provider="auto"
                 local dry_run="false"
                 while [[ $# -gt 0 ]]; do
                     case $1 in
+                        --auto)
+                            agent_provider="auto"
+                            shift
+                            ;;
                         --claude)
                             agent_provider="claude"
                             shift
