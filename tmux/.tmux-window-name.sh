@@ -39,7 +39,7 @@ case "$cmd" in
     printf '%s %s' "$dir" "$claude_icon" ;;
   go)
     printf '%s %s' "$dir" "$go_icon" ;;
-  cargo|rustc|rust-binary)
+  cargo|rustc|rust-binary|target/debug/*|target/release/*)
     printf '%s %s' "$dir" "$rust_icon" ;;
   python|python3|python2)
     printf '%s %s' "$dir" "$python_icon" ;;
