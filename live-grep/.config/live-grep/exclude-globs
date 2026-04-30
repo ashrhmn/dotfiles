@@ -12,3 +12,4 @@ Pipfile.lock
 uv.lock
 .git
 .sqlx
+pubspec.lock
