@@ -2502,6 +2502,11 @@ Blocker flow: only if you cannot complete the task after reasonable investigatio
 If you hit a blocker, stop only after the blocker flow above is complete and explain the blocker clearly.
 Post progress updates back to issue #$issue_number with gh cli comments during the run. Prefix every issue comment body with "Agent: ". Provide several mid-run updates with useful context, and post comments when you make meaningful design or implementation decisions. Do not spam every small step, but keep the issue updated enough that a human can follow the work.
 The wrapper will validate the final git and GitHub state after you finish, so do not claim completion unless the required side effects were actually performed.
+Validation requirements that must be met when you finish:
+1. The worktree must be clean (no uncommitted changes). Stage, commit, or revert everything before finishing.
+2. For success flow: the branch must be pushed to origin, a PR must exist targeting $default_branch, and issue #$issue_number must be closed.
+3. For blocker flow: you must have left at least one comment on issue #$issue_number describing the blocker, no PR should exist, and issue #$issue_number must be closed. If you made any commits, the branch must be pushed to origin.
+If none of these conditions are met, the run is considered failed and your work will not be merged.
 Follow AGENTS.md and CLAUDE.md if present in the current directory or accessible added directories.
 Never mention Claude, Claude Code, Codex, GPT, AI, or any LLM in commits, code comments, PR descriptions, or GitHub comments.
 EOF
