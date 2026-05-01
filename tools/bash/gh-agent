@@ -2289,6 +2289,35 @@ process_directory() {
     append_run_log "$run_log_file" "Starting processing for $dir"
     append_run_log "$run_log_file" "Provider mode: $agent_provider_mode"
 
+    # Fetch next issue before checking provider limits. If there is no actionable
+    # issue, avoid spending time and API calls on usage checks or worktree setup.
+    local issue_json
+    if ! issue_json=$(get_next_issue "$repo_full_name"); then
+        echo "Skipping (failed to fetch open issues): $dir"
+        return 0
+    fi
+
+    local issue_number issue_title issue_url
+    issue_number=$(echo "$issue_json" | jq -r '.[0].number // empty' 2>/dev/null)
+    issue_title=$(echo "$issue_json" | jq -r '.[0].title // empty' 2>/dev/null)
+    issue_url=$(echo "$issue_json" | jq -r '.[0].url // empty' 2>/dev/null)
+
+    if [[ -z "$issue_number" ]] || [[ -z "$issue_title" ]]; then
+        echo "No open issues found, skipping: $dir"
+        return 0
+    fi
+
+    local branch_slug branch_name worktree_path
+    branch_slug=$(slugify_branch_component "$issue_title")
+    branch_name="${branch_slug}-issue-${issue_number}"
+    worktree_path="$WORKTREE_DIR/$repo_owner/$repo_name/$branch_name"
+
+    echo "Selected issue: #$issue_number - $issue_title"
+    echo "Issue URL: $issue_url"
+    echo "Repository: $repo_owner/$repo_name"
+    echo "Branch name: $branch_name"
+    echo "Worktree path: $worktree_path"
+
     local selected_agent_provider="$agent_provider_mode"
     local selection_reason="" selection_reset_at=""
     if [[ "$agent_provider_mode" == "auto" ]]; then
@@ -2340,34 +2369,6 @@ process_directory() {
         return 0
     fi
     echo "gh-agent worktree: $gh_agent_worktree"
-
-    # Fetch next issue, prioritizing conflict resolution issues
-    local issue_json
-    if ! issue_json=$(get_next_issue "$repo_full_name"); then
-        echo "Skipping (failed to fetch open issues): $dir"
-        return 0
-    fi
-
-    local issue_number issue_title issue_url
-    issue_number=$(echo "$issue_json" | jq -r '.[0].number // empty' 2>/dev/null)
-    issue_title=$(echo "$issue_json" | jq -r '.[0].title // empty' 2>/dev/null)
-    issue_url=$(echo "$issue_json" | jq -r '.[0].url // empty' 2>/dev/null)
-
-    if [[ -z "$issue_number" ]] || [[ -z "$issue_title" ]]; then
-        echo "No open issues found, skipping: $dir"
-        return 0
-    fi
-
-    local branch_slug branch_name worktree_path
-    branch_slug=$(slugify_branch_component "$issue_title")
-    branch_name="${branch_slug}-issue-${issue_number}"
-    worktree_path="$WORKTREE_DIR/$repo_owner/$repo_name/$branch_name"
-
-    echo "Selected issue: #$issue_number - $issue_title"
-    echo "Issue URL: $issue_url"
-    echo "Repository: $repo_owner/$repo_name"
-    echo "Branch name: $branch_name"
-    echo "Worktree path: $worktree_path"
 
     local log_file="$LOG_DIR/${timestamp}_${repo_name}_issue_${issue_number}_${selected_agent_provider}.json"
     local worktree_plan
