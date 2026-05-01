@@ -12,6 +12,8 @@ WORKTREE_DIR="$HOME/.worktrees"
 CLAUDE_CREDENTIALS_FILE="$HOME/.claude/.credentials.json"
 CLAUDE_OAUTH_USAGE_URL="https://api.anthropic.com/api/oauth/usage"
 CLAUDE_OAUTH_BETA_HEADER="oauth-2025-04-20"
+CODEX_AUTH_FILE="${CODEX_HOME:-$HOME/.codex}/auth.json"
+CODEX_DEFAULT_CHATGPT_BASE_URL="https://chatgpt.com/backend-api"
 
 usage() {
     local cmd
@@ -889,6 +891,135 @@ EOF
 }
 
 fetch_codex_usage_json() {
+    fetch_codex_usage_json_direct || fetch_codex_usage_json_via_app_server
+}
+
+get_codex_chatgpt_base_url() {
+    local config_file="${CODEX_HOME:-$HOME/.codex}/config.toml"
+    local base_url
+
+    base_url=""
+    if [[ -f "$config_file" ]]; then
+        base_url=$(sed -n -E 's/^[[:space:]]*chatgpt_base_url[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$config_file" | tail -n 1)
+    fi
+
+    if [[ -z "$base_url" ]]; then
+        base_url="$CODEX_DEFAULT_CHATGPT_BASE_URL"
+    fi
+
+    while [[ "$base_url" == */ ]]; do
+        base_url="${base_url%/}"
+    done
+
+    if [[ "$base_url" =~ ^https://(chatgpt.com|chat.openai.com)$ ]]; then
+        base_url="$base_url/backend-api"
+    fi
+
+    echo "$base_url"
+}
+
+get_codex_usage_url() {
+    local base_url
+
+    base_url=$(get_codex_chatgpt_base_url)
+    if [[ "$base_url" == *"/backend-api"* ]]; then
+        echo "$base_url/wham/usage"
+    else
+        echo "$base_url/api/codex/usage"
+    fi
+}
+
+normalize_codex_usage_json() {
+    jq -c '
+        def window($window):
+            if $window == null then
+                null
+            else
+                {
+                    usedPercent: ($window.used_percent // $window.usedPercent),
+                    windowDurationMins: (
+                        if $window.limit_window_seconds != null then
+                            (($window.limit_window_seconds / 60) | floor)
+                        else
+                            ($window.windowDurationMins // null)
+                        end
+                    ),
+                    resetsAt: ($window.reset_at // $window.resetsAt)
+                }
+            end;
+        def snapshot($limit_id; $limit_name; $rate_limit; $plan_type; $reached_type; $credits):
+            {
+                limitId: $limit_id,
+                limitName: $limit_name,
+                primary: window($rate_limit.primary_window // $rate_limit.primary),
+                secondary: window($rate_limit.secondary_window // $rate_limit.secondary),
+                credits: ($credits // null),
+                planType: ($plan_type // null),
+                rateLimitReachedType: ($reached_type.type // $reached_type // null)
+            };
+
+        if .rateLimits != null then
+            .
+        else
+            . as $root
+            | snapshot("codex"; null; $root.rate_limit; $root.plan_type; ($root.rate_limit_reached_type // null); ($root.credits // null)) as $primary
+            | {
+                rateLimits: $primary,
+                rateLimitsByLimitId: (
+                    (
+                        [{key: "codex", value: $primary}]
+                        + (($root.additional_rate_limits // []) | map(
+                            . as $item
+                            | ($item.limit_name // $item.metered_feature // "codex") as $limit_id
+                            | {
+                                key: $limit_id,
+                                value: snapshot(
+                                    $limit_id;
+                                    ($item.limit_name // null);
+                                    $item.rate_limit;
+                                    $root.plan_type;
+                                    null;
+                                    ($item.credits // null)
+                                )
+                            }
+                        ))
+                    )
+                    | from_entries
+                )
+            }
+        end
+    '
+}
+
+fetch_codex_usage_json_direct() {
+    local access_token account_id usage_url usage_json
+
+    if [[ ! -f "$CODEX_AUTH_FILE" ]]; then
+        echo "Codex auth file not found: $CODEX_AUTH_FILE" >&2
+        return 1
+    fi
+
+    access_token=$(jq -r '.tokens.access_token // empty' "$CODEX_AUTH_FILE" 2>/dev/null)
+    account_id=$(jq -r '.tokens.account_id // .tokens.id_token.chatgpt_account_id // empty' "$CODEX_AUTH_FILE" 2>/dev/null)
+    if [[ -z "$access_token" ]]; then
+        echo "Codex ChatGPT access token is missing from $CODEX_AUTH_FILE" >&2
+        return 1
+    fi
+    if [[ -z "$account_id" ]]; then
+        echo "Codex ChatGPT account id is missing from $CODEX_AUTH_FILE" >&2
+        return 1
+    fi
+
+    usage_url=$(get_codex_usage_url)
+    usage_json=$(curl -fsS "$usage_url" \
+        -H "Authorization: Bearer $access_token" \
+        -H "ChatGPT-Account-Id: $account_id" \
+        -H "User-Agent: codex-cli") || return 1
+
+    printf '%s\n' "$usage_json" | normalize_codex_usage_json
+}
+
+fetch_codex_usage_json_via_app_server() {
     local init_response rpc_response
 
     coproc CODEX_APP_SERVER { codex app-server --listen stdio:// 2>/dev/null; }
@@ -903,16 +1034,21 @@ fetch_codex_usage_json() {
 
     printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' >&"${CODEX_APP_SERVER[1]}"
     printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"account/rateLimits/read","params":{}}' >&"${CODEX_APP_SERVER[1]}"
-    if ! IFS= read -r rpc_response <&"${CODEX_APP_SERVER[0]}"; then
-        echo "Failed to read Codex rate limit response" >&2
-        exec {CODEX_APP_SERVER[1]}>&-
-        wait "$CODEX_APP_SERVER_PID" 2>/dev/null || true
-        return 1
-    fi
+    while IFS= read -r rpc_response <&"${CODEX_APP_SERVER[0]}"; do
+        if [[ "$(printf '%s\n' "$rpc_response" | jq -r '.id // empty' 2>/dev/null)" == "2" ]]; then
+            break
+        fi
+        rpc_response=""
+    done
 
     exec {CODEX_APP_SERVER[1]}>&-
     cat <&"${CODEX_APP_SERVER[0]}" >/dev/null 2>&1 || true
     wait "$CODEX_APP_SERVER_PID" 2>/dev/null || true
+
+    if [[ -z "$rpc_response" ]]; then
+        echo "Failed to read Codex rate limit response" >&2
+        return 1
+    fi
 
     printf '%s\n' "$rpc_response" | jq -c '.result' 2>/dev/null
 }
