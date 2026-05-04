@@ -14,6 +14,7 @@ CLAUDE_OAUTH_USAGE_URL="https://api.anthropic.com/api/oauth/usage"
 CLAUDE_OAUTH_BETA_HEADER="oauth-2025-04-20"
 CODEX_AUTH_FILE="${CODEX_HOME:-$HOME/.codex}/auth.json"
 CODEX_DEFAULT_CHATGPT_BASE_URL="https://chatgpt.com/backend-api"
+GLM_ENV_FILE="$HOME/.glm.sh"
 
 usage() {
     local cmd
@@ -36,6 +37,7 @@ Commands:
 Start options:
     --claude            Force Claude for the start command
     --codex             Use Codex for the start command
+    --glm               Use GLM through Claude CLI after sourcing ~/.glm.sh
     --auto              Auto-select provider based on live limits (default)
     --dry-run           Preview actions only; never pull, create worktrees, or run agents
 
@@ -52,6 +54,7 @@ Examples:
     $cmd dry-run .              Preview one immediate pass for the current repository
     $cmd start                  Start the monitoring service in auto mode
     $cmd start --codex          Start the monitoring service with Codex
+    $cmd start --glm            Start the monitoring service with GLM
     $cmd start --dry-run        Run one immediate preview pass and exit
     $cmd usage                  Show Claude and Codex limit usage
     $cmd logs                   List recent log files
@@ -1202,6 +1205,11 @@ select_forced_agent_provider() {
     local provider="$1"
     local current_reached=1 weekly_reached=1 reset_at reason
 
+    if [[ "$provider" == "glm" ]]; then
+        echo "glm|forced GLM provider; usage check skipped|"
+        return 0
+    fi
+
     load_provider_state "$provider" || {
         echo "Concern: failed to fetch $provider usage data for forced provider limit check." >&2
         return 1
@@ -1427,7 +1435,7 @@ extract_log_token_breakdown() {
     local log_file="$2"
 
     case "$provider" in
-        claude)
+        claude|glm)
             jq -rs '
                 map(select(.type == "result") | .usage)
                 | reduce .[] as $usage (
@@ -1959,6 +1967,26 @@ run_claude_agent() {
     return "${pipeline_statuses[0]:-0}"
 }
 
+run_glm_agent() {
+    local worktree_path="$1"
+    local dir="$2"
+    local agent_prompt="$3"
+    local log_file="$4"
+    local notification_file="$5"
+
+    (
+        cd "$worktree_path" || exit 1
+        source "$GLM_ENV_FILE"
+        claude --dangerously-skip-permissions --output-format "stream-json" --print --verbose --add-dir "$dir" -- "$agent_prompt"
+    ) 2>&1 | \
+        tee "$log_file" | \
+        format_claude_json_stream | \
+        tee "$notification_file"
+
+    local pipeline_statuses=("${PIPESTATUS[@]}")
+    return "${pipeline_statuses[0]:-0}"
+}
+
 run_codex_agent() {
     local worktree_path="$1"
     local dir="$2"
@@ -2053,12 +2081,23 @@ Check issue #$issue_number to understand what changes \`$branch_name\` introduce
 EOF
 )
 
-    gh issue create \
+    local conflict_issue_url
+    if ! conflict_issue_url=$(gh issue create \
         --repo "$repo_full_name" \
         --title "gh-agent conflict: $branch_name into gh-agent (PR #$pr_number)" \
         --body "$body" \
-        --label "gh-agent-conflict" \
-        2>/dev/null || echo "Warning: could not create conflict issue for PR #$pr_number." >&2
+        2>/dev/null); then
+        echo "Warning: could not create conflict issue for PR #$pr_number." >&2
+        return
+    fi
+
+    local conflict_issue_number
+    conflict_issue_number=$(echo "$conflict_issue_url" | grep -oE '[0-9]+$')
+    gh issue edit "$conflict_issue_number" \
+        --repo "$repo_full_name" \
+        --add-label "gh-agent-conflict" \
+        2>/dev/null || true
+    echo "Created conflict issue #$conflict_issue_number: $conflict_issue_url"
 }
 
 get_next_issue() {
@@ -2228,22 +2267,33 @@ sync_feature_to_gh_agent() {
     local issue_number="$4"
     local issue_title="$5"
 
-    echo "Creating PR to merge $branch_name into gh-agent..."
-
-    local pr_url pr_number
-    if ! pr_url=$(gh pr create \
+    local pr_number
+    pr_number=$(gh pr list \
         --repo "$repo_full_name" \
         --head "$branch_name" \
         --base "gh-agent" \
-        --title "merge $branch_name into gh-agent" \
-        --body "Merging feature branch for issue #$issue_number: $issue_title into gh-agent staging branch." \
-        2>/dev/null); then
-        echo "Warning: could not create PR for $branch_name into gh-agent (may already exist or no changes)."
-        return 0
-    fi
+        --state open \
+        --json number \
+        --jq '.[0].number // empty' 2>/dev/null)
 
-    pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
-    echo "Created PR #$pr_number: $pr_url"
+    if [[ -n "$pr_number" ]]; then
+        echo "Found existing PR #$pr_number for $branch_name -> gh-agent"
+    else
+        echo "Creating PR to merge $branch_name into gh-agent..."
+        local pr_url
+        if ! pr_url=$(gh pr create \
+            --repo "$repo_full_name" \
+            --head "$branch_name" \
+            --base "gh-agent" \
+            --title "merge $branch_name into gh-agent" \
+            --body "Merging feature branch for issue #$issue_number: $issue_title into gh-agent staging branch." \
+            2>/dev/null); then
+            echo "Warning: could not create PR for $branch_name into gh-agent (may have no changes)."
+            return 0
+        fi
+        pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
+        echo "Created PR #$pr_number: $pr_url"
+    fi
 
     echo "Merging PR #$pr_number into gh-agent..."
     if gh pr merge "$pr_number" --repo "$repo_full_name" --merge 2>/dev/null; then
@@ -2544,6 +2594,9 @@ EOF
         claude)
             run_claude_agent "$worktree_path" "$dir" "$agent_prompt" "$log_file" "$notification_file" || agent_exit_status=$?
             ;;
+        glm)
+            run_glm_agent "$worktree_path" "$dir" "$agent_prompt" "$log_file" "$notification_file" || agent_exit_status=$?
+            ;;
         codex)
             run_codex_agent "$worktree_path" "$dir" "$agent_prompt" "$log_file" "$notification_file" || agent_exit_status=$?
             ;;
@@ -2760,6 +2813,10 @@ main() {
                             dry_run_agent_provider="codex"
                             shift
                             ;;
+                        --glm)
+                            dry_run_agent_provider="glm"
+                            shift
+                            ;;
                         *)
                             if [[ -n "$dry_run_path" ]]; then
                                 echo "Unknown option for dry-run: $1"
@@ -2799,6 +2856,10 @@ main() {
                             ;;
                         --codex)
                             agent_provider="codex"
+                            shift
+                            ;;
+                        --glm)
+                            agent_provider="glm"
                             shift
                             ;;
                         --dry-run)
