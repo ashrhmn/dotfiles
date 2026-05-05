@@ -237,6 +237,9 @@ trust_level = "trusted"
 [projects."/home/ash/clones/ashrhmn/ledgeo_app"]
 trust_level = "trusted"
 
+[projects."/home/ash/clones/ashrhmn/vdt"]
+trust_level = "trusted"
+
 [plugins."github@openai-curated"]
 enabled = true
 
