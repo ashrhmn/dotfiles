@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: disk-speed-test [SIZE]
+
+Run a direct disk write/read speed test in the current directory.
+
+Arguments:
+    SIZE    Test file size, using IEC units supported by numfmt (default: 4G)
+
+Examples:
+    disk-speed-test
+    disk-speed-test 1G
+    disk-speed-test 512M
+
+EOF
+}
+
+case "${1:-}" in
+    --help|-h)
+        usage
+        exit 0
+        ;;
+esac
+
+if [[ $# -gt 1 ]]; then
+    echo "Error: too many arguments" >&2
+    usage >&2
+    exit 1
+fi
+
+for command_name in dd numfmt awk sync; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+        echo "Error: required command not found: $command_name" >&2
+        exit 1
+    fi
+done
+
+size="${1:-4G}"
+test_file="./disk-speed-test.tmp"
+
+size_bytes="$(numfmt --from=iec "$size")" || {
+    echo "Error: invalid size: $size" >&2
+    exit 1
+}
+
+count="$(awk -v bytes="$size_bytes" 'BEGIN { print int((bytes + 1048575) / 1048576) }')"
+
+if [[ "$count" -lt 1 ]]; then
+    echo "Error: size must be at least 1M" >&2
+    exit 1
+fi
+
+cleanup() {
+    rm -f "$test_file"
+}
+trap cleanup EXIT
+
+echo "Testing disk speed in: $(pwd)"
+echo "Test file size: $size"
+echo "Block size: 1M"
+echo "Block count: $count"
+echo
+
+echo "=== Write test ==="
+sync
+dd if=/dev/zero of="$test_file" bs=1M count="$count" oflag=direct status=progress
+sync
+
+echo
+echo "=== Read test ==="
+dd if="$test_file" of=/dev/null bs=1M iflag=direct status=progress
+
+echo
+echo "Done."
