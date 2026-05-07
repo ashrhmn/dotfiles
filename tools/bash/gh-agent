@@ -9,6 +9,7 @@ LOG_DIR="$CONFIG_DIR/logs"
 CACHE_DIR="$CONFIG_DIR/cache"
 CACHE_MAX_AGE_SECONDS=300
 CHECK_INTERVAL_MINUTES=13
+API_429_BACKOFF_ATTEMPTS=0
 WORKTREE_DIR="$HOME/.worktrees"
 CLAUDE_CREDENTIALS_FILE="$HOME/.claude/.credentials.json"
 CLAUDE_OAUTH_USAGE_URL="https://api.anthropic.com/api/oauth/usage"
@@ -2026,39 +2027,75 @@ run_codex_agent() {
     return "$agent_exit_status"
 }
 
-agent_log_has_temporary_overload_429() {
+classify_agent_429_error() {
     local log_file="$1"
 
     [[ -f "$log_file" ]] || return 1
 
     if grep -Eq 'API Error: Request rejected \(429\).*The service may be temporarily overloaded' "$log_file"; then
+        echo "temporary_overload"
+        return 0
+    fi
+
+    if grep -Eq 'API Error: Request rejected \(429\).*Usage limit reached|api_error_status":429.*(Usage limit reached|You'\''ve hit your limit)' "$log_file"; then
+        echo "usage_limit"
         return 0
     fi
 
     return 1
 }
 
-send_temporary_overload_notification() {
+get_api_429_backoff_seconds() {
+    echo $((60 * (2 ** API_429_BACKOFF_ATTEMPTS)))
+}
+
+handle_agent_429_backoff() {
     local log_file="$1"
     local repo_full_name="$2"
     local issue_number="$3"
     local selected_agent_provider="$4"
     local dir="$5"
+    local error_type
 
-    if ! agent_log_has_temporary_overload_429 "$log_file"; then
+    if ! error_type=$(classify_agent_429_error "$log_file"); then
+        API_429_BACKOFF_ATTEMPTS=0
         return 0
     fi
 
+    local sleep_seconds sleep_minutes title message
+    sleep_seconds=$(get_api_429_backoff_seconds)
+    sleep_minutes=$((sleep_seconds / 60))
+
+    case "$error_type" in
+        temporary_overload)
+            title="gh-agent API overload [$selected_agent_provider]: $dir"
+            message="API Error: Request rejected (429) · The service may be temporarily overloaded, please try again later"
+            ;;
+        usage_limit)
+            title="gh-agent API usage limit [$selected_agent_provider]: $dir"
+            message="API Error: Request rejected (429) · Usage limit reached"
+            ;;
+        *)
+            title="gh-agent API 429 [$selected_agent_provider]: $dir"
+            message="API Error: Request rejected (429)"
+            ;;
+    esac
+
     {
-        echo "API overload detected"
+        echo "API 429 detected"
         echo ""
         echo "Provider: $selected_agent_provider"
         echo "Repository: $repo_full_name"
         echo "Issue: #$issue_number"
         echo "Directory: $dir"
-        echo "Message: API Error: Request rejected (429) · The service may be temporarily overloaded, please try again later"
+        echo "Type: $error_type"
+        echo "Message: $message"
+        echo "Sleeping for $sleep_minutes minutes"
         echo "Log: $log_file"
-    } | tgn -t "gh-agent API overload [$selected_agent_provider]: $dir" 2>/dev/null >/dev/null || true
+    } | tgn -t "$title" 2>/dev/null >/dev/null || true
+
+    API_429_BACKOFF_ATTEMPTS=$((API_429_BACKOFF_ATTEMPTS + 1))
+    sleep "$sleep_seconds"
 }
 
 get_default_branch() {
@@ -2643,7 +2680,7 @@ EOF
             ;;
     esac
 
-    send_temporary_overload_notification \
+    handle_agent_429_backoff \
         "$log_file" \
         "$repo_full_name" \
         "$issue_number" \
@@ -2751,13 +2788,13 @@ run_check_once() {
         return 0
     fi
 
-    echo "$dirs" | while read -r dir; do
+    while read -r dir; do
         if [[ -d "$dir" ]]; then
             process_directory "$dir" "$agent_provider" "$dry_run"
         else
             echo "Skipping (directory not found): $dir"
         fi
-    done
+    done < <(printf '%s\n' "$dirs")
 }
 
 start_monitoring() {
