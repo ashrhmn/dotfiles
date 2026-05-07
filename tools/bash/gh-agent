@@ -8,6 +8,7 @@ CONFIG_FILE="$CONFIG_DIR/.config.json"
 LOG_DIR="$CONFIG_DIR/logs"
 CACHE_DIR="$CONFIG_DIR/cache"
 CACHE_MAX_AGE_SECONDS=300
+CHECK_INTERVAL_MINUTES=13
 WORKTREE_DIR="$HOME/.worktrees"
 CLAUDE_CREDENTIALS_FILE="$HOME/.claude/.credentials.json"
 CLAUDE_OAUTH_USAGE_URL="https://api.anthropic.com/api/oauth/usage"
@@ -29,7 +30,7 @@ Commands:
     remove [PATH]       Remove directory from watch list
     list                List all watched directories
     dry-run [PATH]      Preview planned issue handling without making changes
-    start [OPTIONS]     Start monitoring (runs forever, checks every 5 minutes)
+    start [OPTIONS]     Start monitoring (runs forever, checks every configured interval)
     usage               Show current Claude and Codex usage details
     logs                Show recent log files
     version             Show version information
@@ -2655,13 +2656,34 @@ EOF
     echo "Completed processing: $dir"
 }
 
-is_fifth_minute() {
+get_scheduled_minute_list() {
+    local minute
+    local schedule=""
+
+    for (( minute = 0; minute < 60; minute += CHECK_INTERVAL_MINUTES )); do
+        if [[ -n "$schedule" ]]; then
+            schedule+=", "
+        fi
+        schedule+="$(printf '%02d' "$minute")"
+    done
+
+    echo "$schedule"
+}
+
+validate_check_interval_minutes() {
+    if [[ ! "$CHECK_INTERVAL_MINUTES" =~ ^[1-9][0-9]*$ ]]; then
+        echo "CHECK_INTERVAL_MINUTES must be a positive integer: $CHECK_INTERVAL_MINUTES" >&2
+        return 1
+    fi
+}
+
+is_scheduled_minute() {
     local current_minute
     current_minute=$(date +%M)
     # Remove leading zero for arithmetic
     current_minute=$((10#$current_minute))
 
-    if (( current_minute % 5 == 0 )); then
+    if (( current_minute % CHECK_INTERVAL_MINUTES == 0 )); then
         return 0
     else
         return 1
@@ -2700,6 +2722,7 @@ start_monitoring() {
     local agent_provider="${1:-auto}"
     local dry_run="${2:-false}"
 
+    validate_check_interval_minutes
     ensure_config
 
     if [[ "$dry_run" == "true" ]]; then
@@ -2714,7 +2737,7 @@ start_monitoring() {
     echo "Starting $(basename "$0") monitoring service (v$VERSION)"
     echo "Agent provider mode: $agent_provider"
     echo "Running first check immediately"
-    echo "Checking every 5 minutes (00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)"
+    echo "Checking every $CHECK_INTERVAL_MINUTES minutes ($(get_scheduled_minute_list))"
     echo "Press Ctrl+C to stop"
     echo ""
 
@@ -2730,7 +2753,7 @@ start_monitoring() {
     echo ""
     echo "========================================"
     echo "Completed immediate check at $(date '+%Y-%m-%d %H:%M:%S')"
-    echo "Next scheduled check on the next 5-minute mark"
+    echo "Next scheduled check on the next $CHECK_INTERVAL_MINUTES-minute mark"
     echo "========================================"
 
     while true; do
@@ -2745,8 +2768,8 @@ start_monitoring() {
             continue
         fi
 
-        # Check if it's a 5th minute
-        if is_fifth_minute; then
+        # Check if this minute is on the configured schedule.
+        if is_scheduled_minute; then
             last_run_minute=$current_minute
 
             echo ""
@@ -2759,7 +2782,7 @@ start_monitoring() {
             echo ""
             echo "========================================"
             echo "Completed check at $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "Next check in ~5 minutes"
+            echo "Next check in ~$CHECK_INTERVAL_MINUTES minutes"
             echo "========================================"
         fi
     done
