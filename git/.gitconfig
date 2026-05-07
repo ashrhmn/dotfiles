@@ -18,7 +18,7 @@
 	email = ashik.se@proton.me
 
 [url "git@github.com:"]
-    insteadOf = https://github.com/
+	insteadOf = https://github.com/
     # Use SSH instead of HTTPS for GitHub (if you have SSH keys set up)
 
 [core]
