@@ -94,10 +94,16 @@ return {
 	{
 		"echasnovski/mini.splitjoin",
 		event = "VeryLazy",
-		opts = {},
+		opts = {
+			mappings = {
+				toggle = "gJ",
+				split = "",
+				join = "",
+			},
+		},
 		keys = {
 			{
-				"gS",
+				"gJ",
 				"<cmd>lua require('mini.splitjoin').toggle()<cr>",
 				desc = "Toggle split/join",
 			},

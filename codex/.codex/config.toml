@@ -243,6 +243,9 @@ trust_level = "trusted"
 [projects."/home/ash/clones/ashrhmn/docker-recipes"]
 trust_level = "trusted"
 
+[projects."/home/ash/clones/ashrhmn/gh-agent"]
+trust_level = "trusted"
+
 [plugins."github@openai-curated"]
 enabled = true
 
