@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [[ -z "${1:-}" ]]; then
+    echo "usage: whoshh <ssh-host>" >&2
+    exit 2
+fi
+
+if ! ssh -G -v "$1" 2>&1 >/dev/null | grep -F "$HOME/.ssh/" | grep -Fq "Applying options for"; then
+    echo "whoshh: no SSH config entry found for '$1'" >&2
+    exit 1
+fi
+
+ssh -G "$1" 2>/dev/null | grep -E '^(hostname|user|port|identityfile|proxyjump|proxycommand) '
