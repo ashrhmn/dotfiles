@@ -267,6 +267,9 @@ trust_level = "trusted"
 [projects."/home/ash/clones/ashrhmn/pqc-plan"]
 trust_level = "trusted"
 
+[projects."/home/ash/clones/ashrhmn/krown-setup"]
+trust_level = "trusted"
+
 [plugins."github@openai-curated"]
 enabled = true
 
