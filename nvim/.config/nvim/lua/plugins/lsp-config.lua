@@ -156,7 +156,12 @@ return {
             enable = false,
             url = "",
           },
-          schemas = require("schemastore").yaml.schemas(),
+          schemas = vim.tbl_extend("force", require("schemastore").yaml.schemas(), {
+            ["https://raw.githubusercontent.com/ansible/schemas/main/f/ansible-tasks.json"] = {
+              "**/tasks/*.yml",
+              "**/playbooks/_tasks_*.yml",
+            },
+          }),
         },
       },
     })
