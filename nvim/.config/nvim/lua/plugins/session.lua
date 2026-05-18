@@ -14,6 +14,17 @@ return {
         -- auto_save_enabled = true,
         -- auto_restore_enabled = true,
 
+        post_restore_cmds = {
+          function()
+            vim.schedule(function()
+              local buf = vim.api.nvim_get_current_buf()
+              local view = vim.fn.winsaveview()
+              vim.cmd("edit")
+              vim.fn.winrestview(view)
+            end)
+          end,
+        },
+
         -- ⚠️ This will only work if Telescope.nvim is installed
         -- The following are already the default values, no need to provide them if these are already the settings you want.
         session_lens = {
