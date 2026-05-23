@@ -270,6 +270,27 @@ trust_level = "trusted"
 [projects."/home/ash/clones/ashrhmn/krown-setup"]
 trust_level = "trusted"
 
+[projects."/home/ash/clones/ashrhmn/krown-health-check"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/krown-staking-contract"]
+trust_level = "trusted"
+
+[projects."/tmp/ks"]
+trust_level = "trusted"
+
+[projects."/home/ash/dellarch/clones/clones/ashrhmn/hardhat-v2"]
+trust_level = "trusted"
+
+[projects."/tmp"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/validator-backend"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/validator-frontend"]
+trust_level = "trusted"
+
 [plugins."github@openai-curated"]
 enabled = true
 
