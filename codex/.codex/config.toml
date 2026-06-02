@@ -291,6 +291,18 @@ trust_level = "trusted"
 [projects."/home/ash/clones/ashrhmn/validator-frontend"]
 trust_level = "trusted"
 
+[projects."/home/ash/clones/ashrhmn/validator-management"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/net-pilot"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/getcultd/getcultd"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/krown-orchestrator"]
+trust_level = "trusted"
+
 [plugins."github@openai-curated"]
 enabled = true
 

@@ -11,6 +11,7 @@ After completing a task always notify the user with the cli tool tgn, for simple
 ## Code Guidelines
 - Never use emoji in the code
 - Never use any in typescript
+- Keep code files from growing too large: 400 lines is a soft limit, and 800 lines is a hard limit for a single code file. Split responsibilities into smaller files before reaching the hard limit.
 
 ## Project-Specific Guidelines
 
