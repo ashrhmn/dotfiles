@@ -4,6 +4,68 @@ cmd="$1"
 dir="$2"
 pid="$3"
 
+resolve_make_command() {
+  local root_pid="$1"
+  local root_cmd=""
+  local root_under_make=0
+  local current_pid current_depth current_under_make child child_cmd child_under_make
+  local resolved_cmd=""
+  local resolved_pid=""
+  local resolved_depth=999999
+  local -a pids=("$root_pid")
+  local -a depths=(0)
+  local -a children=()
+  local index=0
+
+  { read -r root_cmd < "/proc/$root_pid/comm"; } 2>/dev/null || true
+  if [[ "$root_cmd" == "make" || "$root_cmd" == "gmake" ]]; then
+    root_under_make=1
+  fi
+  local -a under_make=("$root_under_make")
+
+  while [ "$index" -lt "${#pids[@]}" ]; do
+    current_pid="${pids[$index]}"
+    current_depth="${depths[$index]}"
+    current_under_make="${under_make[$index]}"
+    index=$((index + 1))
+
+    children=()
+    { read -r -a children < "/proc/$current_pid/task/$current_pid/children"; } 2>/dev/null || true
+
+    for child in "${children[@]}"; do
+      { read -r child_cmd < "/proc/$child/comm"; } 2>/dev/null || continue
+      child_under_make="$current_under_make"
+
+      if [[ "$child_cmd" == "make" || "$child_cmd" == "gmake" ]]; then
+        child_under_make=1
+      fi
+
+      pids+=("$child")
+      depths+=("$((current_depth + 1))")
+      under_make+=("$child_under_make")
+
+      if [ "$child_under_make" -eq 1 ] &&
+         [[ "$child_cmd" != "make" && "$child_cmd" != "gmake" ]] &&
+         [[ "$child_cmd" != "sh" && "$child_cmd" != "bash" && "$child_cmd" != "dash" &&
+            "$child_cmd" != "zsh" && "$child_cmd" != "fish" && "$child_cmd" != "env" ]] &&
+         [ "$current_depth" -lt "$resolved_depth" ]; then
+        resolved_cmd="$child_cmd"
+        resolved_pid="$child"
+        resolved_depth="$current_depth"
+      fi
+    done
+  done
+
+  if [ -n "$resolved_cmd" ]; then
+    cmd="$resolved_cmd"
+    pid="$resolved_pid"
+  fi
+}
+
+if [[ "$cmd" == "make" || "$cmd" == "gmake" ]] && [ -n "$pid" ]; then
+  resolve_make_command "$pid"
+fi
+
 # check if the process exe is under target/debug or target/release (rust binary)
 if [ -n "$pid" ]; then
   full_exe=$(readlink "/proc/$pid/exe" 2>/dev/null)
