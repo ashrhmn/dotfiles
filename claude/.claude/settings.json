@@ -28,5 +28,6 @@
   "effortLevel": "medium",
   "autoUpdatesChannel": "stable",
   "skipDangerousModePermissionPrompt": true,
-  "agentPushNotifEnabled": true
+  "agentPushNotifEnabled": true,
+  "tui": "fullscreen"
 }

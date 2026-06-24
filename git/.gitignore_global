@@ -4,3 +4,5 @@ venv
 dist
 .next
 /gemmit_diff_*
+
+**/.claude/settings.local.json

@@ -386,7 +386,7 @@ connect_target() {
     done
   fi
 
-  cmd=(ssh)
+  cmd=(ssh -q)
 
   if [[ ${#ssh_options[@]} -gt 0 ]]; then
     cmd+=("${ssh_options[@]}")
