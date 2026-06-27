@@ -73,51 +73,12 @@ approval_policy = "never"
 
 # OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
 sandbox_mode = "danger-full-access"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 personality = "pragmatic"
 
 # Extra settings when sandbox_mode = "workspace-write".
 notify = ["/Users/ash/.codex/plugins/cache/openai-bundled/computer-use/1.0.755/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient", "turn-ended"]
-
-[sandbox_workspace_write]
-# Exclude $TMPDIR from writable roots (default: false)
-exclude_tmpdir_env_var = false
-# Exclude /tmp from writable roots (default: false)
-exclude_slash_tmp = false
-# Additional writable roots (default: empty)
-writable_roots = []
-# Allow outbound network from sandbox (default: false)
-network_access = false
-
-
-# --- Profiles ----------------------------------------------------------------
-
-# Active profile name; equivalent to --profile (unset by default).
-# profile = "default"
-
-# Define named profiles to switch sets of options together.
-# [profiles.o3]
-# model = "o3"
-# model_provider = "openai"
-# approval_policy = "never"
-# model_reasoning_effort = "high"
-# model_reasoning_summary = "detailed"
-
-# [profiles.gpt3]
-# model = "gpt-3.5-turbo"
-# model_provider = "openai"
-
-# [profiles.zdr]
-# model = "o3"
-# model_provider = "openai"
-# approval_policy = "on-failure"
-# disable_response_storage = true
-
-
-# --- Persistence & notifications --------------------------------------------
-
-# Disable Responses storage for Zero Data Retention orgs (default: false).
-disable_response_storage = false
+approvals_reviewer = "user"
 
 # External notifier program; receives a single JSON argument (unset by default).
 # Example: notify = ["python3", "/path/to/notify.py"]
@@ -301,6 +262,24 @@ trust_level = "trusted"
 trust_level = "trusted"
 
 [projects."/home/ash/clones/ashrhmn/krown-orchestrator"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/curlink"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/todo"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/node-agent"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/hlf"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/taskr"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/rtshell"]
 trust_level = "trusted"
 
 [plugins."github@openai-curated"]
