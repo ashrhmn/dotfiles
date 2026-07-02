@@ -282,6 +282,9 @@ trust_level = "trusted"
 [projects."/home/ash/clones/ashrhmn/rtshell"]
 trust_level = "trusted"
 
+[projects."/home/ash/clones/ashrhmn/node-orchestrator"]
+trust_level = "trusted"
+
 [plugins."github@openai-curated"]
 enabled = true
 

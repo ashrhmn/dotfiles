@@ -27,7 +27,8 @@
   "alwaysThinkingEnabled": true,
   "effortLevel": "medium",
   "autoUpdatesChannel": "stable",
+  "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
-  "agentPushNotifEnabled": true,
-  "tui": "fullscreen"
+  "autoCompactEnabled": true,
+  "agentPushNotifEnabled": true
 }
