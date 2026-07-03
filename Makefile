@@ -1,4 +1,4 @@
-.PHONY: all clean install bash-tools go-tools submodules update-submodules help default
+.PHONY: all clean install bash-tools go-tools git-hooks submodules update-submodules help default
 
 # Set default target
 .DEFAULT_GOAL := default
@@ -9,6 +9,7 @@ default: update-submodules clean all
 # Directories
 BIN_DIR := bin/.bin
 BASH_DIR := tools/bash
+GIT_HOOKS_DIR := git/.config/git/hooks
 
 # Platform-specific tools to ignore during build
 DARWIN_IGNORE := pbcopy xdg-open
@@ -26,8 +27,8 @@ help:
 confirm:
 	@echo -n 'Are you sure? [y/N] ' && read ans && [ $${ans:-N} = y ]
 
-## all: build all tools (bash + go)
-all: bash-tools go-tools
+## all: build all tools (bash + go) and prepare git hooks
+all: bash-tools go-tools git-hooks
 
 ## update-submodules: update git submodules to latest remote changes
 update-submodules:
@@ -71,6 +72,19 @@ bash-tools:
 		done; \
 	else \
 		echo "  ⚠️  No bash tools directory found"; \
+	fi
+
+## git-hooks: make global git hooks executable
+git-hooks:
+	@echo "Preparing Git hooks..."
+	@if [ -d "$(GIT_HOOKS_DIR)" ]; then \
+		for hook in $(GIT_HOOKS_DIR)/*; do \
+			if [ -f "$$hook" ]; then \
+				chmod +x "$$hook" && echo "  ready: $$hook"; \
+			fi; \
+		done; \
+	else \
+		echo "  no Git hooks directory found"; \
 	fi
 
 ## go-tools: build only go tools
@@ -192,4 +206,4 @@ clone-fresh:
 	@git submodule update --init --recursive
 	@make all
 
- 
+  
