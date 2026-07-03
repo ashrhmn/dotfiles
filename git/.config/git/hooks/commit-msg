@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+msg_file="${1:?missing commit message file}"
+tmp_file="$(mktemp)"
+
+# Remove Co-authored-by trailers, regardless of casing or leading whitespace.
+awk 'tolower($0) !~ /^[[:space:]]*co-authored-by:[[:space:]]*/ { print }' "$msg_file" > "$tmp_file"
+cat "$tmp_file" > "$msg_file"
+rm -f "$tmp_file"
