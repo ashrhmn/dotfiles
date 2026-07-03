@@ -32,6 +32,9 @@
     excludesfile = ~/.gitignore_global
     # Global gitignore for OS/editor specific files
     
+    hooksPath = ~/.config/git/hooks
+    # Global hooks managed from dotfiles
+    
     pager = less -FRX
     # Better pager settings for git log/diff output
     
