@@ -285,6 +285,12 @@ trust_level = "trusted"
 [projects."/home/ash/clones/ashrhmn/node-orchestrator"]
 trust_level = "trusted"
 
+[projects."/home/ash/clones/ashrhmn/launch-pad"]
+trust_level = "trusted"
+
+[projects."/home/ash/clones/ashrhmn/ferrax-examples"]
+trust_level = "trusted"
+
 [plugins."github@openai-curated"]
 enabled = true
 

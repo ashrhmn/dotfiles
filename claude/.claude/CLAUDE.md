@@ -11,6 +11,7 @@ After completing a task always notify the user with the cli tool tgn, for simple
 ## Code Guidelines
 - Never use emoji in the code
 - Never use any in typescript
+- In React code, each `.tsx` file must define exactly one React component. Apart from imports and the component's export, do not define additional components, helper functions, hooks, constants, types, or any other code in that file; move each into a separate file.
 - Keep code files from growing too large: 400 lines is a soft limit, and 800 lines is a hard limit for a single code file. Split responsibilities into smaller files before reaching the hard limit.
 
 ## Project-Specific Guidelines
