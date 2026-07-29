@@ -2,6 +2,7 @@
   "permissions": {
     "defaultMode": "default"
   },
+  "model": "opus",
   "hooks": {
     "Stop": [
       {
@@ -25,7 +26,7 @@
     "frontend-design@claude-plugins-official": true
   },
   "alwaysThinkingEnabled": true,
-  "effortLevel": "medium",
+  "effortLevel": "high",
   "autoUpdatesChannel": "stable",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,

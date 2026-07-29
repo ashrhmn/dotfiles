@@ -8,7 +8,7 @@
 
 # Model to use (default: "gpt-5").
 # Examples: "gpt-5", "o3", "o4-mini", "codex-*", "gpt-5-codex".
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 
 web_search = "live"
 # Provider id from [model_providers] (default: "openai").
@@ -73,7 +73,7 @@ approval_policy = "never"
 
 # OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
 sandbox_mode = "danger-full-access"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 personality = "pragmatic"
 
 # Extra settings when sandbox_mode = "workspace-write".
@@ -150,9 +150,11 @@ experimental_use_exec_command_tool = false
 # --- TUI options (reserved for future use) ----------------------------------
 
 [tui]
+theme = "catppuccin-latte"
 
 [tui.model_availability_nux]
 "gpt-5.5" = 4
+"gpt-5.6-sol" = 4
 
 [notice]
 hide_rate_limit_model_nudge = true
@@ -162,134 +164,6 @@ hide_rate_limit_model_nudge = true
 "gpt-5.2-codex" = "gpt-5.3-codex"
 "gpt-5.3-codex" = "gpt-5.4"
 
-[projects."/home/ash/clones/ashrhmn/ledgeo"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/ledgeo-rs"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/Krown-Network/Node"]
-trust_level = "trusted"
-
-[projects."/home/ash/dotfiles"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/ledgeo-landing"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/Krown-Network/qastle-api"]
-trust_level = "trusted"
-
-[projects."/home/ash"]
-trust_level = "trusted"
-
-[projects."/Users/ash/clones/ashrhmn/ledgeo_app"]
-trust_level = "trusted"
-
-[projects."/Users/ash/dotfiles"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/DeepchainLabs/kazentic-backend"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/Krown-Network/qastle-ui"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/ledgeo_app"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/vdt"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/docker-recipes"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/gh-agent"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/tgn-cli"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/tgn-app"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/stash"]
-trust_level = "trusted"
-
-[projects."/home/ash/krown-cl-data"]
-trust_level = "trusted"
-
-[projects."/tmp/tmp.TPONyN6Gne"]
-trust_level = "trusted"
-
-[projects."/home/ash/win10-virtio-vm"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/pqc-plan"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/krown-setup"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/krown-health-check"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/krown-staking-contract"]
-trust_level = "trusted"
-
-[projects."/tmp/ks"]
-trust_level = "trusted"
-
-[projects."/home/ash/dellarch/clones/clones/ashrhmn/hardhat-v2"]
-trust_level = "trusted"
-
-[projects."/tmp"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/validator-backend"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/validator-frontend"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/validator-management"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/net-pilot"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/getcultd/getcultd"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/krown-orchestrator"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/curlink"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/todo"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/node-agent"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/hlf"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/taskr"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/rtshell"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/node-orchestrator"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/launch-pad"]
-trust_level = "trusted"
-
-[projects."/home/ash/clones/ashrhmn/ferrax-examples"]
-trust_level = "trusted"
 
 [plugins."github@openai-curated"]
 enabled = true
@@ -300,9 +174,15 @@ enabled = true
 [plugins."computer-use@openai-bundled"]
 enabled = true
 
+[plugins."sites@openai-bundled"]
+enabled = true
+
+[plugins."visualize@openai-bundled"]
+enabled = true
+
 [marketplaces.openai-bundled]
-last_updated = "2026-04-22T08:22:31Z"
+last_updated = "2026-07-29T11:40:42Z"
 source_type = "local"
-source = "/Users/ash/.codex/.tmp/bundled-marketplaces/openai-bundled"
+source = "/home/ash/dotfiles/codex/.codex/.tmp/bundled-marketplaces/openai-bundled"
 
 # Reserved for future TUI-specific options.
