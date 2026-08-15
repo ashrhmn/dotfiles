@@ -73,12 +73,13 @@ approval_policy = "never"
 
 # OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
 sandbox_mode = "danger-full-access"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "max"
 personality = "pragmatic"
 
 # Extra settings when sandbox_mode = "workspace-write".
 notify = ["/Users/ash/.codex/plugins/cache/openai-bundled/computer-use/1.0.755/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient", "turn-ended"]
 approvals_reviewer = "user"
+service_tier = "fast"
 
 # External notifier program; receives a single JSON argument (unset by default).
 # Example: notify = ["python3", "/path/to/notify.py"]
@@ -151,6 +152,8 @@ experimental_use_exec_command_tool = false
 
 [tui]
 theme = "catppuccin-latte"
+status_line = ["model-with-reasoning", "current-dir", "five-hour-limit", "weekly-limit", "used-tokens", "task-progress"]
+status_line_use_colors = false
 
 [tui.model_availability_nux]
 "gpt-5.5" = 4
@@ -181,7 +184,7 @@ enabled = true
 enabled = true
 
 [marketplaces.openai-bundled]
-last_updated = "2026-07-29T11:40:42Z"
+last_updated = "2026-08-15T16:48:30Z"
 source_type = "local"
 source = "/home/ash/dotfiles/codex/.codex/.tmp/bundled-marketplaces/openai-bundled"
 
