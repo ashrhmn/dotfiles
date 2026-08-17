@@ -152,7 +152,7 @@ experimental_use_exec_command_tool = false
 
 [tui]
 theme = "catppuccin-latte"
-status_line = ["model-with-reasoning", "current-dir", "five-hour-limit", "weekly-limit", "used-tokens", "task-progress"]
+status_line = ["model-with-reasoning", "current-dir", "five-hour-limit", "weekly-limit", "used-tokens", "git-branch", "branch-changes", "context-remaining"]
 status_line_use_colors = false
 
 [tui.model_availability_nux]
@@ -184,7 +184,7 @@ enabled = true
 enabled = true
 
 [marketplaces.openai-bundled]
-last_updated = "2026-08-15T16:48:30Z"
+last_updated = "2026-08-17T12:15:02Z"
 source_type = "local"
 source = "/home/ash/dotfiles/codex/.codex/.tmp/bundled-marketplaces/openai-bundled"
 
