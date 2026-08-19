@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create gh-agent Issue"
-  short_description: "Create labeled issues for gh-agent workstreams"
-  default_prompt: "Use $create-gh-agent-issue to create a scoped GitHub issue for the appropriate feature workstream."

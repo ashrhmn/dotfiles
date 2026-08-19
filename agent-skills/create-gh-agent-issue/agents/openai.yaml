@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create gh-agent Issues"
+  short_description: "Plan and publish ordered gh-agent issues"
+  default_prompt: "Use $create-gh-agent-issue to turn this settled work into approved, dependency-ordered gh-agent issues."

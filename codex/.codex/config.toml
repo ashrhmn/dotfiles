@@ -184,7 +184,7 @@ enabled = true
 enabled = true
 
 [marketplaces.openai-bundled]
-last_updated = "2026-08-17T12:15:02Z"
+last_updated = "2026-08-19T14:40:20Z"
 source_type = "local"
 source = "/home/ash/dotfiles/codex/.codex/.tmp/bundled-marketplaces/openai-bundled"
 
