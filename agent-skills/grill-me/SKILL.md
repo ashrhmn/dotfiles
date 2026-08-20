@@ -83,6 +83,16 @@ Q1. <short title>
 Recommendation: <recommended answer and brief reason>
 ```
 
+Before the first round, tell the user that `R` is available as a per-question shorthand for "Your recommendation is fine."
+
+Interpret `R` using these rules:
+
+- Treat `R` as accepting that question's recommendation exactly as written, including its stated conditions and tradeoffs.
+- In a multi-question round, accept forms such as `Q3: R` or an `R` in another answer slot that maps unambiguously to one question.
+- Treat a bare response containing only `R` as valid only when the round has one question. If several questions are pending, ask which question it answers rather than applying it to all of them.
+- Recognize `R` only as a standalone answer token, not when it appears inside prose, code, or an identifier.
+- In the round checkpoint and `state.md`, expand `R` into the accepted recommendation and its rationale. Optionally note that it was accepted via shorthand, but never persist `R` as the only record of the decision.
+
 Before presenting a round, write its complete questions to the next `rounds/NN.md` file and update `state.md` with the round number and pending question IDs. Then present exactly that checkpointed round.
 
 After every user response, make the durable checkpoint the first task:
