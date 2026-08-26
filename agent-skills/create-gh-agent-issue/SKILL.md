@@ -1,6 +1,6 @@
 ---
 name: create-gh-agent-issue
-description: Turn settled work into focused GitHub issues for repositories managed by gh-agent, including approved vertical slicing, the mandatory workstream label, and serial dependency order. Use when the user explicitly asks to create or publish one or more implementation issues that gh-agent should execute through feature and automation branches.
+description: Turn settled work into focused GitHub issues for repositories managed by gh-agent, including approved vertical slicing, the mandatory workstream label, enforced prerequisite labels, and serial publication order. Use when the user explicitly asks to create or publish one or more implementation issues that gh-agent should execute through feature and automation branches.
 ---
 
 # Create gh-agent Issues
@@ -55,6 +55,8 @@ For every proposed issue, present:
 - **Blocked by**: genuine prerequisites, or none
 - **Verification**: the bounded evidence that will prove it complete
 
+An approved **Blocked by** entry means the user is approving scheduling behavior, not just documentation. When publication is separately authorized, publish it as an enforced `require-issue-closed:` label as well as human-readable dependency prose.
+
 When decomposing new multi-issue work, wait for the user to approve the granularity, ordering, and dependencies before creating anything. For one already-scoped issue, show the final title and body, then proceed when the user's request already explicitly authorized creation.
 
 ## Write self-contained issue bodies
@@ -95,6 +97,8 @@ Depends on #<number>
 
 Omit the dependency reference for the first issue and state that it has no workstream dependency. Include every finalized decision relevant to the issue, but do not paste the conversation or weaken precise constraints into generic prose.
 
+For every dependency, keep the `Depends on #<number>` prose and its `require-issue-closed:` label in agreement. The prose is the human-readable explanation; the label is the enforced scheduling control.
+
 Check every acceptance criterion before publishing:
 
 - It can be false at the starting commit.
@@ -103,13 +107,25 @@ Check every acceptance criterion before publishing:
 
 ## Publish serially
 
-1. Ensure the `base:<workstream>` label exists. Create it only when publication is authorized.
+1. Ensure the `base:<workstream>` label and, as prerequisite numbers become known, every `require-issue-closed:` label required by the approved breakdown exist. Create labels only when publication is authorized.
 2. Apply exactly one valid `base:<workstream>` label to every agent-managed issue. Other ordinary labels are allowed.
 3. Create prerequisite issues first and record each returned issue number.
-4. Add `Depends on #<number>` to every later issue that relies on an earlier issue.
-5. Create dependent issues serially. Creation time is gh-agent's actual queue control; do not rely on native blocker metadata to schedule work.
-6. Verify each issue is open and has exactly one `base:*` label before creating its dependents.
+4. Add `Depends on #<number>` to every later issue that relies on an earlier issue, and apply the corresponding `require-issue-closed:<number>` label or labels to that dependent issue.
+5. Create dependent issues serially. Serial creation is the default scheduling order and the fallback when prerequisite labels are unsupported; where a real dependency exists, `require-issue-closed:` labels are the explicit enforced mechanism. Do not rely on GitHub's native issue-dependency or blocker metadata because gh-agent does not read it.
+6. Verify each issue is open and has exactly one `base:*` label. For each dependent issue, also verify that every intended `require-issue-closed:` label is present and agrees with the `Depends on` prose before creating its dependents.
 7. Stop on a failed creation or failed verification instead of publishing an unsafe remainder.
+
+Use prerequisite labels according to this grammar and behavior:
+
+- Start the label name with `require-issue-closed:` and follow it with a comma-separated list of references with no whitespace.
+- Use a bare decimal number such as `129` for an issue in the same repository. Do not include a leading `#`; `require-issue-closed:#129` is invalid.
+- Use `owner/repo#129` for an issue in another repository.
+- Multiple `require-issue-closed:` labels on one issue are allowed; gh-agent unions all of their prerequisite sets.
+- The prefix consumes 21 characters of GitHub's label-name limit. A qualified reference such as `owner/repo#129` should generally have its own label instead of being packed into a list.
+- A prerequisite is satisfied when its issue is closed in any closed state. This does not prove its code reached the workstream branches, and an issue closed through gh-agent's blocker flow still satisfies the label.
+- gh-agent skips an issue with an unsatisfied prerequisite instead of stalling its `base:` group. A later issue can therefore run first, so creation order no longer implies implementation order when prerequisite labels are present.
+- Builds that predate prerequisite gating ignore these unknown labels and fall back to serial creation order; do not add version gating.
+- A mistyped prerequisite value can leave an issue ineligible with a repeating skip line instead of a loud failure. Verify the exact label value after publication.
 
 Use temporary body files outside the repository when calling `gh issue create`. Do not create `feature/*`, `automation/*`, or issue branches. Do not target or merge the default branch. Branch and pull-request ownership belongs to gh-agent.
 
