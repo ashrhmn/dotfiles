@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: git unmerged [-s|--short] [<base>]
+
+List remote-tracking branches with non-merge patches absent from a base.
+The base defaults to HEAD. Remote refs are fetched and pruned before comparison.
+
+Options:
+    -s, --short  Print only matching branch names
+    -h, --help   Show this help message
+EOF
+}
+
+short_output=false
+base=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -s|--short)
+            short_output=true
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            usage >&2
+            exit 2
+            ;;
+        *)
+            if [[ -n "$base" ]]; then
+                usage >&2
+                exit 2
+            fi
+            base="$1"
+            ;;
+    esac
+    shift
+done
+
+base="${base:-HEAD}"
+
+git fetch --all --prune --quiet
+
+if ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null; then
+    echo "fatal: base '$base' is not a commit" >&2
+    exit 1
+fi
+
+refs_output="$(
+    git for-each-ref \
+        --format='%(if)%(symref)%(then)%(else)%(refname:short)%(end)' \
+        refs/remotes/
+)"
+
+branches=()
+while IFS= read -r branch; do
+    if [[ -n "$branch" ]]; then
+        branches+=("$branch")
+    fi
+done <<< "$refs_output"
+
+matched_branches=()
+patch_counts=()
+branch_header="Remote branch"
+branch_width=${#branch_header}
+
+for branch in "${branches[@]}"; do
+    patches="$(
+        git rev-list \
+            --count \
+            --cherry-pick \
+            --right-only \
+            --no-merges \
+            "${base}...${branch}" \
+            --
+    )"
+
+    if (( patches > 0 )); then
+        matched_branches+=("$branch")
+        patch_counts+=("$patches")
+        if (( ${#branch} > branch_width )); then
+            branch_width=${#branch}
+        fi
+    fi
+done
+
+if (( ${#matched_branches[@]} == 0 )); then
+    exit 0
+fi
+
+if [[ "$short_output" == true ]]; then
+    printf '%s\n' "${matched_branches[@]}"
+    exit 0
+fi
+
+printf 'Base: %s\n\n' "$base"
+printf "%-${branch_width}s  %7s  %s\n" "$branch_header" "Patches" "Tree diff"
+
+for index in "${!matched_branches[@]}"; do
+    branch="${matched_branches[$index]}"
+    patches="${patch_counts[$index]}"
+    numstat="$(git diff --numstat "$base" "$branch" --)"
+    stats="$(
+        printf '%s' "$numstat" | awk '
+            {
+                files++
+                if ($1 ~ /^[0-9]+$/) additions += $1
+                if ($2 ~ /^[0-9]+$/) deletions += $2
+            }
+            END {
+                printf "%d %d %d", files, additions, deletions
+            }
+        '
+    )"
+    read -r files additions deletions <<< "$stats"
+
+    printf \
+        "%-${branch_width}s  %7d  %d files, +%d/-%d\n" \
+        "$branch" \
+        "$patches" \
+        "$files" \
+        "$additions" \
+        "$deletions"
+done

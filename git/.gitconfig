@@ -9,6 +9,9 @@
     
     # Gemini-generated commit message with editor
     gemmit = "!gemmit"
+
+    # Summarize remote branches with non-merge patches absent from HEAD or a base
+    unmerged = "!git-unmerged"
     
     # Short aliases
     co = clone-org
