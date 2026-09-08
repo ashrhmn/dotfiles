@@ -31,6 +31,8 @@ Notes:
     - Backups include schema, tables, views, functions, and data
     - Backups exclude ownership and privilege metadata
     - Restore requires the target database to already exist
+    - .env assignments accept an optional export prefix and inline # comments
+    - Quote .env values containing literal # characters; values are not expanded
 
 Environment Variables (in priority order):
     URL:      DATABASE_URL, DB_URL, POSTGRES_URL, POSTGRESQL_URL, PG_URL
@@ -74,14 +76,45 @@ load_env_file() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
 
-        if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
-            local key="${BASH_REMATCH[1]}"
-            local value="${BASH_REMATCH[2]}"
+        if [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            local key="${BASH_REMATCH[2]}"
+            local value="${BASH_REMATCH[3]}"
+            local quote="" escaped=false char i
 
-            value="${value#\"}"
-            value="${value%\"}"
-            value="${value#\'}"
-            value="${value%\'}"
+            # Strip comments outside quotes without evaluating shell expressions.
+            for ((i = 0; i < ${#value}; i++)); do
+                char="${value:i:1}"
+                if [[ "$escaped" == true ]]; then
+                    escaped=false
+                    continue
+                fi
+                case "$char" in
+                    \\)
+                        if [[ "$quote" != "'" ]]; then
+                            escaped=true
+                        fi
+                        ;;
+                    \"|\')
+                        if [[ -z "$quote" ]]; then
+                            quote="$char"
+                        elif [[ "$quote" == "$char" ]]; then
+                            quote=""
+                        fi
+                        ;;
+                    '#')
+                        if [[ -z "$quote" ]]; then
+                            value="${value:0:i}"
+                            break
+                        fi
+                        ;;
+                esac
+            done
+
+            # Trim unquoted trailing whitespace, then remove a matching quote pair.
+            value="${value%"${value##*[![:space:]]}"}"
+            if [[ "$value" == \"*\" || "$value" == \'*\' ]]; then
+                value="${value:1:${#value}-2}"
+            fi
 
             export "$key=$value"
         fi
