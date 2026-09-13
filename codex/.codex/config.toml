@@ -73,7 +73,7 @@ approval_policy = "never"
 
 # OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
 sandbox_mode = "danger-full-access"
-model_reasoning_effort = "max"
+model_reasoning_effort = "xhigh"
 personality = "pragmatic"
 
 # Extra settings when sandbox_mode = "workspace-write".
@@ -158,6 +158,7 @@ status_line_use_colors = false
 [tui.model_availability_nux]
 "gpt-5.5" = 4
 "gpt-5.6-sol" = 4
+gpt-6-astra = 4
 
 [notice]
 hide_rate_limit_model_nudge = true
@@ -175,9 +176,6 @@ enabled = true
 enabled = true
 
 [plugins."computer-use@openai-bundled"]
-enabled = true
-
-[plugins."sites@openai-bundled"]
 enabled = true
 
 [plugins."visualize@openai-bundled"]
