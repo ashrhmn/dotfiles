@@ -5,36 +5,25 @@ description: Turn settled work into focused GitHub issues for repositories manag
 
 # Create gh-agent Issues
 
-Create agent-ready issues in execution order. Keep each issue independently testable and small enough for one bounded implementation run.
+Create agent-ready issues in execution order. Keep each issue independently testable and small enough for one bounded implementation run. The implementing agent executes; it never decides. Every choice is made here, before publishing.
 
 ## Confirm authorization and readiness
 
 Treat issue creation, label creation, and issue editing as external writes. Publish only when the user explicitly asks to create or publish issues. If the user asks for a draft, stop before calling write operations.
 
-Identify:
-
-- The target repository
-- A lowercase kebab-case workstream name
-- The settled source of truth: conversation, specification, decision ledger, or landed first slice
+Identify the target repository, a lowercase kebab-case workstream name, and the settled source of truth: conversation, specification, decision ledger, or landed first slice.
 
 Explore the repository for factual context, existing patterns, and bounded verification commands. Do not ask the user for facts available from the repository or tools.
 
-Do not invent missing product or architectural decisions. If unresolved decisions would materially change the work, list them and recommend `grill-me` before issue creation.
+Do not invent missing product or architectural decisions, and do not hand them to the agent by phrasing them as a choice. If unresolved decisions would materially change the work, list them and recommend `grill-me` before issue creation.
 
 If `build-first-slice` was used, confirm that the slice is available in a branch gh-agent worktrees will inherit. Inspect the landed behavior as precedent and exclude behavior it already completed.
 
-Determine the effective implementation base from remote state before deciding what remains:
-
-- Discover the repository's default branch instead of assuming `main`.
-- For a new workstream with no remote `feature/<workstream>` or `automation/<workstream>` branch, treat the default branch as the source gh-agent will seed.
-- For an existing workstream, inspect the remote `automation/<workstream>` branch as the cumulative base. Also account for default and feature changes that gh-agent will synchronize into it before the next issue run.
-- Inspect open workstream issues and pull requests when concurrent or unfinished work could change that base.
-
-Use remote refs rather than stale local branches. If the inherited state or an unfinished prerequisite is uncertain, resolve that uncertainty before publishing downstream issues.
+Determine the effective implementation base from remote refs, not stale local branches: discover the default branch instead of assuming `main`; a new workstream (no remote `feature/<workstream>` or `automation/<workstream>`) seeds from the default branch; an existing workstream's base is remote `automation/<workstream>` plus the default and feature changes gh-agent will sync into it. Inspect open workstream issues and pull requests when unfinished work could change that base, and resolve any uncertainty before publishing downstream issues.
 
 ## Choose one issue or a series
 
-Use one issue when one fresh agent session can deliver and verify the full outcome. Use a series when the work exceeds one bounded run or contains genuine dependency edges.
+Use one issue when one fresh agent session can deliver and verify the full outcome. Use a series when the work exceeds one bounded run or contains genuine dependency edges. A run that must touch more than about 25 files, or whose verification takes more than about 30 minutes end to end, is two issues.
 
 For a series, draft **vertical slices**:
 
@@ -44,7 +33,16 @@ For a series, draft **vertical slices**:
 - Schema, backend, UI, and tests are not separate issues merely because they are separate layers.
 - A wide mechanical refactor may use an expand, migrate, contract sequence when no vertical slice can remain green.
 
-Prefer behavior and stable contracts over incidental file paths. Name stable existing modules or a landed first slice when they provide necessary context, but keep every issue understandable to a fresh agent with repository access.
+Name every file each issue touches. A shared component or helper that several issues need is its own prerequisite issue with its exact API; later issues consume it by name and never modify it. Keep every issue understandable to a fresh agent with repository access.
+
+## Decide everything before publishing
+
+Read the files the issue lists and settle, per file, what changes. Write the answer down; never describe a rule and let the agent apply it.
+
+- Replace blanket rules ("every list auto-loads") with a per-file table of targets. Files that follow the same rule still get their own rows; a genuine exception names its file and what it does instead.
+- Specify literal values: new file paths, component and hook names, props and types, class strings and grid templates, i18n keys with the text for every locale, and the exact tests to add. Decide the what, not the diff: the agent writes the code, tests, and PR.
+- List deletions explicitly: strings, classes, files, allowlist entries. Anything not listed stays unchanged, including "unused" code the change exposes. Edits to existing shared components, tests, or docs appear in the table or do not happen.
+- Do not write "where possible", "may", "unless", "if needed", "or document an exception", "shared hook or component", "fixes the migration genuinely needs", or "state the choice in the pull request". Each of these produced unplanned work in past runs.
 
 ## Approve the breakdown before publishing
 
@@ -70,16 +68,21 @@ Use this structure:
 
 ## Context
 
-<Relevant existing behavior, settled decisions, and landed precedent.>
+<Relevant existing behavior, settled decisions, landed precedent, and reference files.>
+Implement exactly what Scope says. Do not choose other files, widths, names, or behavior.
 
 ## Scope
 
-- <Required behavior and important invariants>
-- <Data, API, UI, security, compatibility, concurrency, and failure behavior where relevant>
+1. `<path>`: <exact edit, with the literal code, class string, prop, or locale text where it matters>
+2. Create `<path>` exporting `<name>` with <exact props and slots>
+
+| File | Target |
+|---|---|
+| `<path>` | <decided width, mode, component, or "unchanged"> |
 
 ## Non-goals
 
-- <Behavior deliberately deferred or preserved unchanged>
+- <Files and behavior that stay unchanged, including tempting adjacent cleanups>
 
 ## Acceptance criteria
 
@@ -88,22 +91,24 @@ Use this structure:
 
 ## Verification
 
-- `<bounded command>`
+- `<test command with an explicit timeout>`
+- `<grep for a literal decided value>` and `! grep` for what must be gone
 
 ## Dependency
 
 Depends on #<number>
 ```
 
-Omit the dependency reference for the first issue and state that it has no workstream dependency. Include every finalized decision relevant to the issue, but do not paste the conversation or weaken precise constraints into generic prose.
-
-For every dependency, keep the `Depends on #<number>` prose and its `require-issue-closed:` label in agreement. The prose is the human-readable explanation; the label is the enforced scheduling control.
+Omit the dependency reference for the first issue and state that it has no workstream dependency. Include every finalized decision relevant to the issue, but do not paste the conversation or weaken precise constraints into generic prose. Keep the `Depends on #<number>` prose and its `require-issue-closed:` label in agreement: the prose explains, the label enforces.
 
 Check every acceptance criterion before publishing:
 
 - It can be false at the starting commit.
 - It is satisfied by this issue rather than a later issue.
-- A reviewer can observe whether it passed.
+- A reviewer can observe whether it passed; at least one criterion per decided value is checkable by a literal grep, not only by the suite passing.
+- The agent can run the check itself in its worktree. Do not require a browser, a live backend, or "sized appropriately" timeouts; give the command and the timeout.
+
+To amend a published issue, append a section headed `## Correction (supersedes any conflicting text above)` with the same per-file table form. The agent reads the full body and comments in order; a later explicit maintainer decision wins.
 
 ## Publish serially
 
@@ -115,17 +120,12 @@ Check every acceptance criterion before publishing:
 6. Verify each issue is open and has exactly one `base:*` label. For each dependent issue, also verify that every intended `require-issue-closed:` label is present and agrees with the `Depends on` prose before creating its dependents.
 7. Stop on a failed creation or failed verification instead of publishing an unsafe remainder.
 
-Use prerequisite labels according to this grammar and behavior:
+Prerequisite label grammar and behavior:
 
-- Start the label name with `require-issue-closed:` and follow it with a comma-separated list of references with no whitespace.
-- Use a bare decimal number such as `129` for an issue in the same repository. Do not include a leading `#`; `require-issue-closed:#129` is invalid.
-- Use `owner/repo#129` for an issue in another repository.
-- Multiple `require-issue-closed:` labels on one issue are allowed; gh-agent unions all of their prerequisite sets.
-- The prefix consumes 21 characters of GitHub's label-name limit. A qualified reference such as `owner/repo#129` should generally have its own label instead of being packed into a list.
-- A prerequisite is satisfied when its issue is closed in any closed state. This does not prove its code reached the workstream branches, and an issue closed through gh-agent's blocker flow still satisfies the label.
-- gh-agent skips an issue with an unsatisfied prerequisite instead of stalling its `base:` group. A later issue can therefore run first, so creation order no longer implies implementation order when prerequisite labels are present.
-- Builds that predate prerequisite gating ignore these unknown labels and fall back to serial creation order; do not add version gating.
-- A mistyped prerequisite value can leave an issue ineligible with a repeating skip line instead of a loud failure. Verify the exact label value after publication.
+- `require-issue-closed:` followed by a comma-separated list with no whitespace: bare `129` for the same repository (never `#129`), `owner/repo#129` for another repository. Multiple labels on one issue are unioned. The prefix uses 21 of GitHub's label characters, so give a qualified reference its own label.
+- A prerequisite is satisfied when its issue is closed in any state, including through gh-agent's blocker flow; closure orders the queue but proves nothing about code reaching the workstream branches.
+- gh-agent skips an issue with an unsatisfied prerequisite rather than stalling its `base:` group, so creation order no longer implies implementation order. Builds that predate gating ignore the labels and fall back to creation order.
+- A mistyped value leaves an issue silently ineligible with a repeating skip line. Verify the exact label value after publication.
 
 Use temporary body files outside the repository when calling `gh issue create`. Do not create `feature/*`, `automation/*`, or issue branches. Do not target or merge the default branch. Branch and pull-request ownership belongs to gh-agent.
 
