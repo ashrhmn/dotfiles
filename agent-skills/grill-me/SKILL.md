@@ -1,20 +1,33 @@
 ---
 name: grill-me
-description: Interview the user in rounds without changing the implementation, persist compaction-safe checkpoints under the active project's `./.decision`, and produce a confirmed decision record before implementation. Use only when the user explicitly asks to be grilled, questioned, stress-tested, or wants every ambiguity resolved before any action.
+description: Interview the user in rounds without changing the implementation, persist compaction-safe checkpoints in the project's directory under `~/decision-ledger`, and produce a confirmed decision record before implementation. Use only when the user explicitly asks to be grilled, questioned, stress-tested, or wants every ambiguity resolved before any action.
 ---
 
 # Grill Me
 
-Operate in implementation-read-only discovery. Inspect files, documentation, issues, and external sources when useful, but do not change code, project documentation, trackers, configuration, or external state. The only permitted writes are the decision checkpoints and records beneath `./.decision` described below.
+Operate in implementation-read-only discovery. Inspect files, documentation, issues, and external sources when useful, but do not change code, project documentation, trackers, configuration, or external state. The only permitted writes are the decision checkpoints and records beneath the resolved ledger directory described below, plus the ledger commit and push at the end.
 
 ## Establish decision storage
 
-Use the task's current working directory as the project root and store all session state beneath its `./.decision` directory. State the resolved absolute path before the first round. If the working directory is ambiguous or not the intended project, resolve that with the user before writing.
+All decision state lives outside the project, in the shared ledger repository at `~/decision-ledger` (`/home/ash/decision-ledger`). Never create a `.decision` directory inside a project.
 
-Use this layout, creating only the entries needed for the current session:
+Resolve the project's ledger directory before the first round:
+
+1. Resolve the project root with `git rev-parse --show-toplevel` from the task's current working directory. If the directory is not inside a Git repository, use the current working directory itself. If the working directory is ambiguous or not the intended project, resolve that with the user before writing.
+2. Read the `origin` remote URL with `git remote get-url origin`. If it points at GitHub, extract `<owner>/<repo>` from any of these forms, stripping a trailing `.git`:
+   - `git@github.com:<owner>/<repo>`
+   - `ssh://git@github.com/<owner>/<repo>`
+   - `https://github.com/<owner>/<repo>`
+
+   The ledger directory is `~/decision-ledger/github/<owner>/<repo>`.
+3. Otherwise, flatten the absolute project root: drop the leading `/` and replace every remaining `/` with `--`. The ledger directory is `~/decision-ledger/<flattened-path>`; for example `/home/ash/clones/acme/tool` becomes `~/decision-ledger/home--ash--clones--acme--tool`.
+
+State the resolved absolute ledger directory before the first round.
+
+Use this layout beneath the ledger directory, creating only the entries needed for the current session:
 
 ```text
-.decision/
+~/decision-ledger/github/<owner>/<repo>/   (or the flattened fallback directory)
 ├── index.md
 ├── active/
 │   └── YYYY-MM-DD-<topic-slug>/
@@ -27,7 +40,7 @@ Use this layout, creating only the entries needed for the current session:
         └── YYYY-MM-DD-<topic-slug>.md
 ```
 
-Use lowercase kebab-case for `<topic-slug>` and `<area>`; use `general` when no stable area is evident. Never overwrite an unrelated session or record. Resume a matching active session only after checking that its objective matches the user's request.
+Use lowercase kebab-case for `<topic-slug>` and `<area>`; use `general` when no stable area is evident. Never overwrite an unrelated session or record. Several grill-me sessions may run against the same project at once, each in its own `active/` directory; only touch the current session's directory. Resume a matching active session only after checking that its objective matches the user's request.
 
 If the checkpoint cannot be created or updated, disclose that immediately and ask whether to continue without durable state. Do not silently rely on conversation memory.
 
@@ -121,10 +134,11 @@ Ask the user to confirm that this is the shared understanding. Do not create the
 
 After confirmation:
 
-1. Write the permanent record to `.decision/records/<area>/YYYY-MM-DD-<topic-slug>.md` with `status`, `confirmed_at`, `area`, `scope`, and `supersedes` metadata plus the confirmed ledger.
-2. Create or update `.decision/index.md` with one concise entry linking the record. Preserve unrelated entries.
+1. Write the permanent record to `<ledger-dir>/records/<area>/YYYY-MM-DD-<topic-slug>.md` with `status`, `confirmed_at`, `area`, `scope`, and `supersedes` metadata plus the confirmed ledger.
+2. Create or update `<ledger-dir>/index.md` with one concise entry linking the record. Preserve unrelated entries.
 3. Re-read the permanent record and verify that it contains every confirmed decision, invariant, non-goal, deferred item, and `Unresolved questions: None`.
-4. Remove only the current `.decision/active/YYYY-MM-DD-<topic-slug>/` directory, including its temporary round files. Preserve all other active sessions and permanent records.
-5. Report the permanent record's path to the user.
+4. Remove only the current `<ledger-dir>/active/YYYY-MM-DD-<topic-slug>/` directory, including its temporary round files. Preserve all other active sessions and permanent records.
+5. Commit and push the ledger repository, staging only this session's files: the new record, `index.md`, and the deletion of the current `active/YYYY-MM-DD-<topic-slug>/` directory. Stage those paths explicitly; never use `git add -A`, `git add .`, or `git commit -a`, because other sessions and agents may have unrelated changes in the ledger. Commit with a message of the form `<owner>/<repo>: <topic-slug>`. If the push is rejected because the remote moved, run `git pull --rebase` and push again; if `index.md` conflicts, keep every entry from both sides. If the commit or push still fails, report the failure and the paths that remain uncommitted instead of retrying blindly.
+6. Report the permanent record's path to the user.
 
-End the skill after confirmation and archival. Do not begin implementation, edit other documentation, create issues, commit, or push until the user explicitly requests the next phase.
+End the skill after confirmation and archival. Do not begin implementation, edit other documentation, create issues, or commit or push anything in the project repository until the user explicitly requests the next phase.
