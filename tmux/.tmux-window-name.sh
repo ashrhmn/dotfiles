@@ -148,6 +148,8 @@ rust_icon=$(printf '')
 python_icon=$(printf '')
 bun_icon=$(printf '')
 deno_icon=$(printf '')
+timeout_icon=$(printf '\U000F051F')
+sudo_icon=$(printf '\U0000EDCF')
 
 # Shorten the directory name for display
 shortened_dir="$(shorten_dir "$dir")"
@@ -175,6 +177,10 @@ case "$cmd" in
     printf '%s %s' "$shortened_dir" "$bun_icon" ;;
   deno)
     printf '%s %s' "$shortened_dir" "$deno_icon" ;;
+  timeout)
+    printf '%s %s' "$shortened_dir" "$timeout_icon" ;;
+  sudo)
+    printf '%s %s' "$shortened_dir" "$sudo_icon" ;;
   *)
     printf '%s  %s' "$shortened_dir" "$cmd" ;;
 esac
