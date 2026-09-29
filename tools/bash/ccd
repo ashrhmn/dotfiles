@@ -3,7 +3,7 @@
 set -e
 
 # Always bump the version when making changes, follow semantic versioning based on changes made.
-VERSION="1.1.0"
+VERSION="1.1.1"
 CCD_CONFIG_DIR="$HOME/.ccd"
 ACCOUNTS_DIR="$CCD_CONFIG_DIR/accounts"
 COMMON_DIR="$CCD_CONFIG_DIR/common"
@@ -76,7 +76,7 @@ EOF
     "DISABLE_ERROR_REPORTING": 1,
     "DISABLE_TELEMETRY": 1
   },
-  "includeCoAuthoredBy": false
+  "attribution": false
 }
 EOF
     fi

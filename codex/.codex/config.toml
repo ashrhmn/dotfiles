@@ -8,7 +8,7 @@
 
 # Model to use (default: "gpt-5").
 # Examples: "gpt-5", "o3", "o4-mini", "codex-*", "gpt-5-codex".
-model = "gpt-5.6-sol"
+model = "gpt-6-sol"
 
 web_search = "live"
 # Provider id from [model_providers] (default: "openai").
@@ -73,13 +73,13 @@ approval_policy = "never"
 
 # OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
 sandbox_mode = "danger-full-access"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 personality = "pragmatic"
 
 # Extra settings when sandbox_mode = "workspace-write".
 notify = ["/Users/ash/.codex/plugins/cache/openai-bundled/computer-use/1.0.755/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient", "turn-ended"]
 approvals_reviewer = "user"
-service_tier = "fast"
+service_tier = "default"
 
 # External notifier program; receives a single JSON argument (unset by default).
 # Example: notify = ["python3", "/path/to/notify.py"]
@@ -154,6 +154,7 @@ experimental_use_exec_command_tool = false
 theme = "catppuccin-latte"
 status_line = ["model-with-reasoning", "current-dir", "five-hour-limit", "weekly-limit", "used-tokens", "git-branch", "branch-changes", "context-remaining"]
 status_line_use_colors = false
+screen_reader_detection_done = true
 
 [tui.model_availability_nux]
 "gpt-5.5" = 4
