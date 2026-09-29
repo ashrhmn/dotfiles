@@ -1,0 +1,6 @@
+interface:
+  display_name: "Commit, Push"
+  short_description: "Commit and push the current branch"
+  default_prompt: "Use $commit-push to commit the work done on the current branch and push it, without changing branches or opening a pull request."
+policy:
+  allow_implicit_invocation: false
