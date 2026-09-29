@@ -1,0 +1,6 @@
+interface:
+  display_name: "Commit, Push, PR"
+  short_description: "Branch, commit, push, and open a PR"
+  default_prompt: "Use $commit-push-pr to name a branch after this work, commit it, push it, and open a pull request against the default branch."
+policy:
+  allow_implicit_invocation: false
