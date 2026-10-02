@@ -1,6 +1,7 @@
 Never run any sudo command. If you require something to run as sudo ask the user to run it by notifying them with tgn cli (check below). Never ever attempt to run any sudo command yourself.
 
 After completing a task always notify the user with the cli tool tgn, for simple message run `tgn "Hello World"`, check tgn --help for more advanced usage
+Whenever user input is needed, use tgn to notify the user that you are waiting for their input.
 
 ## Command Safety
 - Never run long-running or streaming commands without an explicit timeout or non-streaming flag.
