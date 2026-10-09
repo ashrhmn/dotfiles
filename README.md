@@ -4,7 +4,7 @@ This repository contains my personal configuration files for various development
 
 ## Philosophy
 
-The core idea is to separate configurations into self-contained modules (e.g., `nvim`, `git`, `zshrc`) that can be selectively installed using [GNU Stow](https://www.gnu.org/software/stow/). Custom scripts and tools are built from source using a unified `Makefile`, ensuring all binaries are located in a single, easily managed directory.
+The core idea is to separate configurations into self-contained modules (e.g., `nvim`, `git`, `zshrc`) that can be selectively installed using [GNU Stow](https://www.gnu.org/software/stow/). A unified `Makefile` installs scripts and builds Go tools from standalone repositories in `~/clones/ashrhmn`, placing all binaries in a single directory.
 
 ## What's Inside?
 
@@ -39,7 +39,7 @@ Before you begin, ensure you have the following installed on your system:
     ```
 
 3.  **Build and install all custom tools**:
-    The `Makefile` will compile the Go programs and copy the bash scripts into the `bin/.bin` directory.
+    The `Makefile` clones missing Go projects into `~/clones/ashrhmn`, builds them with their own Makefiles, and copies the bash scripts into `bin/.bin`. Set `GO_PROJECTS_DIR` to use a different clone directory.
     ```bash
     make install
     ```
@@ -65,7 +65,7 @@ Before you begin, ensure you have the following installed on your system:
 
 ### Custom Scripts (`tools/`)
 
-All scripts are built and placed in `bin/.bin/`, which should be added to your `PATH`.
+Scripts live in `tools/bash/`. Go projects live in standalone clones under `~/clones/ashrhmn/`; they are no longer dotfiles submodules. All binaries are placed in `bin/.bin/`, which should be added to your `PATH`. See [tools/README.md](tools/README.md) for build and release commands.
 
 | Script       | Description                                                                                                                            | Language |
 | :----------- | :------------------------------------------------------------------------------------------------------------------------------------- | :------- |
@@ -78,6 +78,7 @@ All scripts are built and placed in `bin/.bin/`, which should be added to your `
 | `spf`        | (SSH Port Forwarder) A robust manager for creating, naming, and persisting SSH tunnel configurations for easy reuse.                      | Bash     |
 | `ts-flatten` | A CLI tool that flattens TypeScript files by recursively inlining all local imports while preserving external ones.                      | Go       |
 | `tsndexer`   | A utility that recursively scans a TypeScript project and generates `index.ts` or `index.tsx` files for all directories.                 | Go       |
+| `tgp-report` | Summarizes TG Pro CSV logs, including temperatures, fan speeds, spikes, and recovery times.                                              | Go       |
 | `xdg-open`   | A wrapper for `xdg-open`. If used in an SSH session on a URL, it copies the URL to the clipboard instead of trying to open it remotely. | Bash     |
 
 ### Managed Configurations

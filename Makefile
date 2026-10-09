@@ -1,4 +1,4 @@
-.PHONY: all clean install bash-tools go-tools git-hooks submodules update-submodules help default
+.PHONY: all clean install bash-tools go-tools clone-go dev-go git-hooks submodules update-submodules help default
 
 # Set default target
 .DEFAULT_GOAL := default
@@ -15,7 +15,8 @@ GIT_HOOKS_DIR := git/.config/git/hooks
 DARWIN_IGNORE := pbcopy xdg-open
 LINUX_IGNORE :=
 
-# Go projects (as git submodules)
+# Standalone Go projects
+GO_PROJECTS_DIR ?= $(HOME)/clones/ashrhmn
 GO_PROJECTS := ts-flatten tsndexer lctx tgp-report
 
 ## help: show this help message
@@ -87,61 +88,44 @@ git-hooks:
 		echo "  no Git hooks directory found"; \
 	fi
 
-## go-tools: build only go tools
-go-tools: update-submodules
-	@echo "🔧 Building Go tools..."
-	@mkdir -p $(BIN_DIR)
-	@for project in $(GO_PROJECTS); do \
-		project_path="tools/$$project"; \
-		project_name="$$project"; \
-		if [ -d "$$project_path" ] && [ -f "$$project_path/go.mod" ]; then \
-			echo "  🔨 Building $$project_name..."; \
-			cd "$$project_path" && \
-			if go build -ldflags="-s -w" -o "../../$(BIN_DIR)/$$project_name" . 2>/dev/null; then \
-				echo "  ✅ $$project_name"; \
-			else \
-				echo "  ❌ Failed to build $$project_name"; \
-			fi && \
-			cd ../..; \
-		elif [ -d "$$project" ]; then \
-			echo "  ⚠️  $$project_name exists but no go.mod found - skipping"; \
-		else \
-			echo "  ⚠️  $$project_name submodule not found - run 'git submodule update --init'"; \
-		fi \
+## clone-go: clone missing Go projects into GO_PROJECTS_DIR
+clone-go:
+	@set -eu; \
+	mkdir -p "$(GO_PROJECTS_DIR)"; \
+	for project in $(GO_PROJECTS); do \
+		project_path="$(GO_PROJECTS_DIR)/$$project"; \
+		if [ ! -e "$$project_path" ]; then \
+			git clone "git@github.com:ashrhmn/$$project.git" "$$project_path"; \
+		elif [ ! -d "$$project_path/.git" ] || [ ! -f "$$project_path/go.mod" ]; then \
+			echo "Invalid Go clone: $$project_path" >&2; \
+			exit 1; \
+		fi; \
+	done
+
+## go-tools: build Go tools from standalone clones
+go-tools: clone-go
+	@set -eu; \
+	for project in $(GO_PROJECTS); do \
+		$(MAKE) -C "$(GO_PROJECTS_DIR)/$$project" build BIN_DIR="$(abspath $(BIN_DIR))"; \
 	done
 
 ## build-%: build specific go project (e.g., build-ts-flatten)
 build-%:
-	@project_name=$(subst build-,,$@); \
-	project_path="tools/$$project_name"; \
-	if [ -d "$$project_path" ] && [ -f "$$project_path/go.mod" ]; then \
-		echo "🔨 Building $$project_name..."; \
-		mkdir -p $(BIN_DIR); \
-		cd "$$project_path" && \
-		if go build -ldflags="-s -w" -o "../../$(BIN_DIR)/$$project_name" .; then \
-			echo "✅ $$project_name built successfully"; \
-		else \
-			echo "❌ Failed to build $$project_name"; \
-			exit 1; \
-		fi; \
+	@set -eu; \
+	project_name=$(subst build-,,$@); \
+	project_path="$(GO_PROJECTS_DIR)/$$project_name"; \
+	if [ -d "$$project_path/.git" ] && [ -f "$$project_path/go.mod" ]; then \
+		$(MAKE) -C "$$project_path" build BIN_DIR="$(abspath $(BIN_DIR))"; \
 	else \
-		echo "❌ Project $$project_name not found or missing go.mod"; \
+		echo "Project $$project_name not found in $(GO_PROJECTS_DIR); run 'make clone-go'." >&2; \
 		exit 1; \
 	fi
 
 ## dev-go: run tests and tidy for all go projects
-dev-go:
-	@echo "🧪 Running Go development tasks..."
-	@for project in $(GO_PROJECTS); do \
-		project_path="tools/$$project"; \
-		project_name="$$project"; \
-		if [ -d "$$project_path" ] && [ -f "$$project_path/go.mod" ]; then \
-			echo "  📦 $$project_name: tidying and testing..."; \
-			cd "$$project_path" && \
-			go mod tidy && \
-			go test ./... && \
-			cd ../..; \
-		fi \
+dev-go: clone-go
+	@set -eu; \
+	for project in $(GO_PROJECTS); do \
+		(cd "$(GO_PROJECTS_DIR)/$$project" && go mod tidy && go test ./...); \
 	done
 
 ## lint-bash: lint bash scripts with shellcheck
@@ -180,18 +164,18 @@ show:
 	else \
 		echo "    (directory not found)"; \
 	fi
-	@echo "  🔧 Go tools:"
+	@echo "  Go tools ($(GO_PROJECTS_DIR)):"
 	@for project in $(GO_PROJECTS); do \
-		project_path="tools/$$project"; \
+		project_path="$(GO_PROJECTS_DIR)/$$project"; \
 		project_name="$$project"; \
 		if [ -d "$$project_path" ]; then \
 			if [ -f "$$project_path/go.mod" ]; then \
-				echo "    ✅ $$project_name (ready)"; \
+				echo "    $$project_name (ready)"; \
 			else \
-				echo "    ⚠️  $$project_name (no go.mod)"; \
+				echo "    $$project_name (no go.mod)"; \
 			fi; \
 		else \
-			echo "    ❌ $$project_name (submodule not initialized)"; \
+			echo "    $$project_name (run 'make clone-go')"; \
 		fi \
 	done
 
@@ -205,5 +189,3 @@ clone-fresh:
 	@echo "🆕 Setting up fresh clone (run this after 'git clone')..."
 	@git submodule update --init --recursive
 	@make all
-
-  
