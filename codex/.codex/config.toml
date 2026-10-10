@@ -8,7 +8,7 @@
 
 # Model to use (default: "gpt-5").
 # Examples: "gpt-5", "o3", "o4-mini", "codex-*", "gpt-5-codex".
-model = "gpt-6-sol"
+model = "gpt-6.1-sol"
 
 web_search = "live"
 # Provider id from [model_providers] (default: "openai").
@@ -73,7 +73,7 @@ approval_policy = "never"
 
 # OS sandbox policy (read-only|workspace-write|danger-full-access; default: "read-only").
 sandbox_mode = "danger-full-access"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 personality = "pragmatic"
 
 # Extra settings when sandbox_mode = "workspace-write".
@@ -160,6 +160,7 @@ screen_reader_detection_done = true
 "gpt-5.5" = 4
 "gpt-5.6-sol" = 4
 gpt-6-astra = 4
+"gpt-6.1-sol" = 4
 
 [notice]
 hide_rate_limit_model_nudge = true
