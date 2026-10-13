@@ -47,11 +47,12 @@ base_args=(
   --hidden
 )
 
+# Guard empty arrays for Bash 3.2 (macOS) with set -u enabled.
 {
-  fd . "${search_roots[@]}" "${base_args[@]}" "${exclude_args[@]}" 2>/dev/null
-  for pat in "${include_patterns[@]}"; do
-    fd "${base_args[@]}" --no-ignore --glob "${exclude_args[@]}" "$pat" "${search_roots[@]}" 2>/dev/null
-    fd "${base_args[@]}" --no-ignore --glob --full-path "${exclude_args[@]}" "**/$pat" "${search_roots[@]}" 2>/dev/null
+  fd . "${search_roots[@]}" "${base_args[@]}" ${exclude_args[@]+"${exclude_args[@]}"} 2>/dev/null
+  for pat in ${include_patterns[@]+"${include_patterns[@]}"}; do
+    fd "${base_args[@]}" --no-ignore --glob ${exclude_args[@]+"${exclude_args[@]}"} "$pat" "${search_roots[@]}" 2>/dev/null
+    fd "${base_args[@]}" --no-ignore --glob --full-path ${exclude_args[@]+"${exclude_args[@]}"} "**/$pat" "${search_roots[@]}" 2>/dev/null
   done
 } | awk '
   BEGIN {
@@ -73,4 +74,4 @@ base_args=(
       print output
     }
   }
-' "${name_filters[@]}"
+' ${name_filters[@]+"${name_filters[@]}"}

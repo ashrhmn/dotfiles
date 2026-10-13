@@ -39,9 +39,10 @@ base_args=(
   --hidden
 )
 
+# Guard empty arrays for Bash 3.2 (macOS) with set -u enabled.
 {
-  rg "${base_args[@]}" "${exclude_args[@]}" "$@" 2>/dev/null || true
+  rg "${base_args[@]}" ${exclude_args[@]+"${exclude_args[@]}"} "$@" 2>/dev/null || true
   if [ "${#include_args[@]}" -gt 0 ]; then
-    rg "${base_args[@]}" --no-ignore "${include_args[@]}" "${exclude_args[@]}" "$@" 2>/dev/null || true
+    rg "${base_args[@]}" --no-ignore "${include_args[@]}" ${exclude_args[@]+"${exclude_args[@]}"} "$@" 2>/dev/null || true
   fi
 } | awk '!seen[$0]++'
