@@ -19,10 +19,14 @@ Use the conversation to choose the files, commit message, and PR description. On
 6. If a PR for this branch is already known, report its URL. Otherwise create one directly:
 
    ```bash
-   gh pr create --base <default> --head <branch> --title "<title>" --body-file <file>
+   gh pr create --base <default> --head <branch> --title "<title>" --body-file - <<'PR_BODY'
+   <Concise summary>
+
+   Checks were not run as requested.
+   PR_BODY
    ```
 
-   Write a concise summary to a temporary body file outside the repository and delete it afterwards. State that checks were not run as requested; do not claim validation. Add `Closes #<number>` only when the user named that issue. Open it ready for review unless the user requested a draft. Add no reviewers, assignees, labels, milestone, or tool attribution unless requested. If creation reports an existing PR, report that URL instead of creating another.
+   Pass a concise summary directly through stdin using `--body-file -` and a quoted heredoc. Do not create temporary files or add cleanup commands. State that checks were not run as requested; do not claim validation. Add `Closes #<number>` only when the user named that issue. Open it ready for review unless the user requested a draft. Add no reviewers, assignees, labels, milestone, or tool attribution unless requested. If creation reports an existing PR, report that URL instead of creating another.
 
 Disable hooks only for the commit and push commands; do not change persistent Git configuration. If an action fails, stop and report the error instead of repairing, pulling, rebasing, resetting, or retrying around it.
 
