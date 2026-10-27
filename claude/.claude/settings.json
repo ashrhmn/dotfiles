@@ -7,7 +7,6 @@
   "permissions": {
     "defaultMode": "auto"
   },
-  "model": "sonnet",
   "hooks": {
     "Stop": [
       {
@@ -38,6 +37,9 @@
     },
     "claude-sonnet-5-5": {
       "effortLevel": "xhigh"
+    },
+    "claude-opus-5-5": {
+      "effortLevel": "high"
     }
   },
   "autoUpdatesChannel": "latest",
