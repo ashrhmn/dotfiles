@@ -6,3 +6,13 @@
 !settings.json
 !statusline-command.sh
 skills/synced
+skills/.trash/
+
+# Keep generated files excluded after the skills allowlist above
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+sample.mp4
+sample.gif
+sample.tape

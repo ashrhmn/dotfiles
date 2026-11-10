@@ -13,3 +13,14 @@ codex/.codex/*
 !codex/.codex/skills/**
 codex/.codex/skills/.system/
 codex/state_*.sqlite
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Generated terminal recording outputs
+sample.mp4
+sample.gif
+sample.tape

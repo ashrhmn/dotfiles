@@ -1,0 +1,4 @@
+interface:
+  display_name: "Record Terminal"
+  short_description: "Record CLI demos with VHS and isolated tmux panes"
+  default_prompt: "Use $record-terminal to create a short recording of this terminal workflow."
