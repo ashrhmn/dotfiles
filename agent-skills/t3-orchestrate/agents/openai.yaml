@@ -1,0 +1,6 @@
+interface:
+  display_name: "T3 Orchestrate"
+  short_description: "Orchestrate T3 worker threads toward one multi-PR goal"
+  default_prompt: "Use $t3-orchestrate to act as orchestrator for this goal: confirm the brief, launch labelled worker threads, review and merge their PRs into the integration branch, and report on the agreed cadence."
+policy:
+  allow_implicit_invocation: false
