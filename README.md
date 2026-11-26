@@ -108,6 +108,36 @@ These directories contain the configuration files for various applications. Use 
 | `zed`          | A high-performance, multiplayer code editor.                             |
 | `zshrc`        | Configuration for the Z shell (`.zshrc`).                                |
 
+### Coding Agents (Shared Skills and Instructions)
+
+All coding agents share one set of skills and one global instruction file:
+
+-   `agent-skills/<name>/SKILL.md`: the single source of truth for skills (open `SKILL.md` format with `name` and `description` frontmatter).
+-   `agent-instructions/AGENTS.md`: the single source of truth for global agent instructions.
+
+How each agent picks them up:
+
+| Agent        | Package    | Skills                                                   | Instructions                                    |
+| :----------- | :--------- | :------------------------------------------------------- | :---------------------------------------------- |
+| Claude Code  | `claude`   | `~/.claude/skills/<name>` per-skill links (`make sync-skills`) | `~/.claude/CLAUDE.md`                      |
+| Codex        | `agents`   | `~/.agents/skills` (directory link)                      | `~/.codex/AGENTS.md` (`codex` package)          |
+| OpenCode     | `agents`   | `~/.agents/skills` (directory link)                      | falls back to `~/.claude/CLAUDE.md`             |
+| Antigravity  | `gemini`   | `~/.gemini/config/skills` (directory link)               | `~/.gemini/config/AGENTS.md`                    |
+
+Claude Code keeps a real `skills/` directory because it stores runtime folders (`synced/`, `.trash/`) there, so it uses per-skill links instead of one directory link.
+
+Setup on a machine (run from `~/dotfiles`):
+
+```bash
+stow claude codex opencode   # existing agent packages
+make stow-agents             # sync Claude skill links, then stow agents and gemini with --no-folding
+make t3-antigravity-links    # optional: T3 Code runs Antigravity with its own GEMINI_HOME per provider profile
+```
+
+`--no-folding` keeps `~/.agents`, `~/.gemini` and `~/.gemini/config` as real directories, so runtime files written there (auth, caches, logs) never land in this repository.
+
+Adding a skill: create `agent-skills/<name>/SKILL.md`, then run `make sync-skills` and commit the new Claude link. Codex, OpenCode and Antigravity see it immediately.
+
 ---
 
 ## Usage
