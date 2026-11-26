@@ -9,9 +9,6 @@ bin/.bin/*
 *.log
 codex/.codex/*
 !codex/.codex/config.toml
-!codex/.codex/skills/
-!codex/.codex/skills/**
-codex/.codex/skills/.system/
 codex/state_*.sqlite
 
 # Python caches and virtual environments

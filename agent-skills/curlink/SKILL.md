@@ -1,4 +1,9 @@
-# curlink skill
+---
+name: curlink
+description: Resolve a curlink shortcode or https://curlink.ashrhmn.com/<shortcode> URL into the referenced file, then treat it as if the user attached it directly. Use when the user gives a 6-character curlink shortcode or curlink URL in place of an image, screenshot, or file.
+---
+
+# curlink
 
 When the user provides a curlink shortcode or a curlink URL instead of directly pasting an image/file/screenshot, resolve and fetch the file first, then treat it as if the user had provided it directly.
 
@@ -36,9 +41,9 @@ Then inspect `/tmp/curlink_<shortcode>`.
 
 ## After fetching
 
-- If the file is an **image or screenshot**: use the Read tool to view it visually (Claude Code is multimodal and can read image files)
-- If the file is a **text/code file**: read it with the Read tool
-- If the file is a **PDF**: read it with the Read tool (supports PDF)
+- If the file is an **image or screenshot**: open it with your file or image viewing tool so you can inspect it visually
+- If the file is a **text/code file**: read it with your file reading tool
+- If the file is a **PDF**: read it with your file reading tool if it supports PDFs
 - Proceed as if the user had pasted or attached the file directly
 
 ## Notes

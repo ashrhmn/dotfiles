@@ -1,4 +1,4 @@
-.PHONY: all clean install bash-tools go-tools clone-go dev-go git-hooks submodules update-submodules help default
+.PHONY: all clean install bash-tools go-tools clone-go dev-go git-hooks submodules update-submodules help default sync-skills stow-agents t3-antigravity-links
 
 # Set default target
 .DEFAULT_GOAL := default
@@ -10,6 +10,12 @@ default: update-submodules clean all
 BIN_DIR := bin/.bin
 BASH_DIR := tools/bash
 GIT_HOOKS_DIR := git/.config/git/hooks
+
+# Shared agent skills and instructions
+SKILLS_DIR := agent-skills
+CLAUDE_SKILLS_DIR := claude/.claude/skills
+AGENT_STOW_PACKAGES := agents gemini
+T3_ANTIGRAVITY_DIR ?= $(HOME)/.t3/userdata/providers/antigravity
 
 # Platform-specific tools to ignore during build
 DARWIN_IGNORE := pbcopy xdg-open
@@ -87,6 +93,54 @@ git-hooks:
 	else \
 		echo "  no Git hooks directory found"; \
 	fi
+
+## sync-skills: link every agent-skills/<name> into claude/.claude/skills and prune stale links
+sync-skills:
+	@set -eu; \
+	mkdir -p "$(CLAUDE_SKILLS_DIR)"; \
+	for link in "$(CLAUDE_SKILLS_DIR)"/*; do \
+		if [ -L "$$link" ] && [ ! -e "$$link" ]; then \
+			case "$$(readlink "$$link")" in \
+				../../../$(SKILLS_DIR)/*) rm "$$link"; echo "  pruned: $$link";; \
+			esac; \
+		fi; \
+	done; \
+	for skill in "$(SKILLS_DIR)"/*/; do \
+		name=$$(basename "$$skill"); \
+		[ -f "$(SKILLS_DIR)/$$name/SKILL.md" ] || continue; \
+		link="$(CLAUDE_SKILLS_DIR)/$$name"; \
+		target="../../../$(SKILLS_DIR)/$$name"; \
+		if [ -L "$$link" ] && [ "$$(readlink "$$link")" = "$$target" ]; then continue; fi; \
+		if [ -e "$$link" ] || [ -L "$$link" ]; then \
+			echo "  conflict: $$link exists and is not a managed skill link" >&2; \
+			exit 1; \
+		fi; \
+		ln -s "$$target" "$$link"; \
+		echo "  linked: $$link"; \
+	done
+
+## stow-agents: sync Claude skill links and stow the shared agent packages (agents, gemini) without folding
+stow-agents: sync-skills
+	@stow --no-folding -R -d "$(CURDIR)" -t "$(HOME)" $(AGENT_STOW_PACKAGES)
+	@echo "  stowed: $(AGENT_STOW_PACKAGES)"
+
+## t3-antigravity-links: link ~/.gemini/config skills and AGENTS.md into T3 Code Antigravity profiles
+t3-antigravity-links:
+	@set -eu; \
+	for config in "$(T3_ANTIGRAVITY_DIR)"/*/config; do \
+		[ -d "$$config" ] || continue; \
+		for item in skills AGENTS.md; do \
+			link="$$config/$$item"; \
+			target="$(HOME)/.gemini/config/$$item"; \
+			if [ -L "$$link" ] && [ "$$(readlink "$$link")" = "$$target" ]; then continue; fi; \
+			if [ -e "$$link" ] || [ -L "$$link" ]; then \
+				echo "  skipped: $$link already exists" >&2; \
+				continue; \
+			fi; \
+			ln -s "$$target" "$$link"; \
+			echo "  linked: $$link"; \
+		done; \
+	done
 
 ## clone-go: clone missing Go projects into GO_PROJECTS_DIR
 clone-go:
