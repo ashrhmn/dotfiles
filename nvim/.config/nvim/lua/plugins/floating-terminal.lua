@@ -150,8 +150,7 @@ return {
     ---@diagnostic disable-next-line missing-fields
     local claudeTerm = fterm:new({
       ft = "fterm_claude",
-      -- cmd = "claude --dangerously-skip-permissions",
-      cmd = "ccd",
+      cmd = "claude --dangerously-skip-permissions",
       ---@diagnostic disable-next-line missing-fields
       dimensions = {
         height = 0.999,

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Curlink"
+  short_description: "Resolve curlink shortcodes or URLs into local files"
+  default_prompt: "Use $curlink to download and inspect the file referenced by this curlink shortcode or URL."

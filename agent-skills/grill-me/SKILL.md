@@ -9,7 +9,7 @@ Operate in implementation-read-only discovery. Inspect files, documentation, iss
 
 ## Establish decision storage
 
-All decision state lives outside the project, in the shared ledger repository at `~/decision-ledger` (`/home/ash/decision-ledger`). Never create a `.decision` directory inside a project.
+All decision state lives outside the project, in the shared ledger repository at `~/decision-ledger`. Never create a `.decision` directory inside a project.
 
 Resolve the project's ledger directory before the first round:
 

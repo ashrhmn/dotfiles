@@ -1,0 +1,4 @@
+interface:
+  display_name: "Read-Only Analysis"
+  short_description: "Investigate and report without mutating the target"
+  default_prompt: "Use $readonly to investigate this target without modifying it and return evidence-backed findings."
