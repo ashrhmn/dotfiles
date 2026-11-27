@@ -4,15 +4,14 @@ After completing a task always notify the user with the cli tool tgn, for simple
 Whenever user input is needed, use tgn to notify the user that you are waiting for their input.
 
 ## Command Safety
-- Never run long-running or streaming commands without an explicit timeout or non-streaming flag.
-- Commands that commonly run forever include `pm2 logs`, `tail -f`, dev servers, watchers, REPLs, database shells, and interactive prompts.
-- For logs, prefer bounded commands such as `pm2 logs <name> --lines 100 --nostream`, `tail -n 100 <file>`, or wrap the command with `timeout <seconds>`.
-- If a long-running command is genuinely required, run it only with a clear timeout and stop/clean up any background process before finishing the task.
+- Avoid running unbounded streaming or interactive commands (such as `pm2 logs`, `tail -f`, dev servers, watchers, REPLs, database shells, or interactive prompts) in the foreground.
+- For logs, prefer bounded commands such as `pm2 logs <name> --lines 100 --nostream` or `tail -n 100 <file>`.
+- Stop and clean up any background process you start before finishing the task.
 
 ## Code Guidelines
 - Never use emoji in the code
 - Never use any in typescript
-- In React code, each `.tsx` file must define exactly one React component. Apart from imports and the component's export, do not define additional components, helper functions, hooks, constants, types, or any other code in that file; move each into a separate file.
+- In React code, each `.tsx` file must define only one React component (along with its own prop types if needed). Move additional components, helper functions, hooks, constants, and shared types into separate files.
 - Keep code files from growing too large: 400 lines is a soft limit, and 800 lines is a hard limit for a single code file. Split responsibilities into smaller files before reaching the hard limit.
 
 ## Project-Specific Guidelines

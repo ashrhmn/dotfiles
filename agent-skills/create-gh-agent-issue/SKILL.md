@@ -91,7 +91,7 @@ Implement exactly what Scope says. Do not choose other files, widths, names, or 
 
 ## Verification
 
-- `<test command with an explicit timeout>`
+- `<test command>`
 - `<grep for a literal decided value>` and `! grep` for what must be gone
 
 ## Dependency
@@ -106,7 +106,7 @@ Check every acceptance criterion before publishing:
 - It can be false at the starting commit.
 - It is satisfied by this issue rather than a later issue.
 - A reviewer can observe whether it passed; at least one criterion per decided value is checkable by a literal grep, not only by the suite passing.
-- The agent can run the check itself in its worktree. Do not require a browser, a live backend, or "sized appropriately" timeouts; give the command and the timeout.
+- The agent can run the check itself in its worktree. Do not require a browser or a live backend; give the exact command.
 
 To amend a published issue, append a section headed `## Correction (supersedes any conflicting text above)` with the same per-file table form. The agent reads the full body and comments in order; a later explicit maintainer decision wins.
 

@@ -70,7 +70,6 @@ Scripts live in `tools/bash/`. Go projects live in standalone clones under `~/cl
 | Script       | Description                                                                                                                            | Language |
 | :----------- | :------------------------------------------------------------------------------------------------------------------------------------- | :------- |
 | `gemmit`     | Generates a conventional commit message using Gemini, based on staged changes and recent commit history. Excludes lockfiles.             | Bash     |
-| `ccd`        | A CLI tool to manage and switch between multiple configuration profiles for the Claude/Gemini CLI.                                       | Bash     |
 | `cpg`        | (Copy Git) Copies the contents of one git repository to one or more target repositories, with options to prune and ignore files.         | Bash     |
 | `lctx`       | (LLM Context) Manages context files for LLM tools by symlinking them from a central repo to project directories using `stow`.            | Go       |
 | `pbcopy`     | A wrapper that enables copying to the system clipboard over an SSH session using OSC 52 escape codes.                                  | Bash     |

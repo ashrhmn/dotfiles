@@ -1,6 +1,5 @@
 .DS_Store
 bin/.bin/*
-/.ccd
 # Zsh compiled files
 *.zwc
 
